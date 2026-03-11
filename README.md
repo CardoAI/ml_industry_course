@@ -56,6 +56,12 @@ Early Feedback Checkpoint – remote friendly: Student presentations and Demos.
 
 ---
 
+## Getting Started
+
+See **[SETUP.md](SETUP.md)** for environment setup instructions (Python, dependencies, JupyterLab).
+
+---
+
 ## Assessment
 
 The course assessment will challenge students to go through a machine learning project from start to finish on a given dataset related to credit markets and/or structured finance.
