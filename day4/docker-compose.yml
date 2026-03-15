@@ -1,0 +1,50 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Day 4 — MLOps: Docker Compose
+#
+# Brings up two services together:
+#   - mlflow     — local MLflow tracking server (UI + artifact store)
+#   - model-svc  — FastAPI prediction service (model baked into image)
+#
+# Usage:
+#   # First run `make train` and `make docker-build`, then:
+#   make -f day4/Makefile docker-compose-up
+#
+# Endpoints:
+#   MLflow UI      →  http://localhost:5000
+#   Prediction API →  http://localhost:8080
+#   API docs       →  http://localhost:8080/docs
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── MLflow tracking server ─────────────────────────────────────────────────
+  mlflow:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./day4:/app/day4
+    command: >
+      bash -c "
+        pip install mlflow -q &&
+        mlflow server
+          --host 0.0.0.0
+          --port 5000
+          --backend-store-uri sqlite:///day4/mlflow.db
+          --default-artifact-root /app/day4/mlartifacts
+      "
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Prediction service ─────────────────────────────────────────────────────
+  model-svc:
+    image: adult-income-predictor:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      mlflow:
+        condition: service_healthy

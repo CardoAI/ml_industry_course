@@ -214,3 +214,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MLflow local artifacts
+mlflow.db
+mlruns/
+mlartifacts/
+
+# Day 4 — local runtime artifacts (model outputs, extracted models)
+day4/outputs/
+day4/mlflow.db
+day4/mlruns/
+day4/mlartifacts/

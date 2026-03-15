@@ -1,0 +1,42 @@
+[project]
+name = "ml-industry-course-day4"
+version = "0.1.0"
+description = "Day 4 — MLOps dependencies"
+requires-python = ">=3.11"
+dependencies = [
+    "mlflow>=2.22.0",
+    "nannyml>=0.13.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.11.0",
+    "httpx>=0.27.0",
+    # mlflow requires pandas<3; pin here to make the constraint explicit
+    "pandas>=2.2.0,<3",
+    "numpy>=1.26.0",
+    "scikit-learn>=1.4.0",
+    "lightgbm>=4.6.0",
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+    "ipykernel>=6.0.0",
+    "jupyter>=1.0.0",
+]
+
+[tool.uv]
+# kaleido 0.2.1.post1 (pulled by nannyml) has no macOS ARM wheel; 0.2.1 does
+override-dependencies = [
+    "kaleido==0.2.1",
+    # nannyml pins lightgbm<4.6 but 4.6+ works fine at runtime
+    # and is needed for scikit-learn>=1.8 compatibility
+    "lightgbm>=4.6.0",
+]
+# Avoid resolving for Python 3.14+ where nannyml/lightgbm constraints conflict
+environments = [
+    "python_full_version >= '3.11' and python_full_version < '3.14'",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

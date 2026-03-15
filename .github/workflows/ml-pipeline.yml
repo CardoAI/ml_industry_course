@@ -1,0 +1,131 @@
+name: ML Pipeline
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Day 4 — MLOps: CI/CD Demonstration Workflow
+#
+# Triggered on every push that touches the day4/ directory.
+# Can also be triggered manually from the Actions tab (workflow_dispatch).
+#
+# What it does:
+#   1. Installs dependencies
+#   2. Trains the LightGBM model, logging to a local (file-based) MLflow instance
+#   3. Runs NannyML drift and performance monitoring
+#   4. Uploads MLflow artifacts and NannyML reports as GitHub Actions artifacts
+#
+# Architecture note:
+#   MLflow uses `file://./mlruns` as the tracking URI — all artifacts stay on
+#   the runner and are uploaded to GitHub Actions after the job finishes.
+#   In production, you would point MLFLOW_TRACKING_URI at a shared remote server
+#   (e.g., an MLflow server backed by S3, Azure Blob, or GCS) so that CI runs
+#   and local developer runs share the same experiment history.
+#
+# Runners:
+#   ubuntu-latest (GitHub-hosted, 4 vCPUs / 16 GB RAM, free on public repos)
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    paths:
+      - "day4/**"
+      - ".github/workflows/ml-pipeline.yml"
+  workflow_dispatch:
+
+jobs:
+  ml-pipeline:
+    name: Train → Monitor → Upload
+    runs-on: ubuntu-latest
+
+    env:
+      MLFLOW_TRACKING_URI: "file://./mlruns"
+      EXPERIMENT_NAME: "ci-adult-income"
+      MODEL_NAME: "adult-income-classifier"
+      OUTPUT_DIR: "/tmp/nannyml_outputs"
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Python + uv setup ───────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # ── 3. Dependency cache ────────────────────────────────────────────────
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('day4/pyproject.toml', 'day4/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      # ── 4. Install dependencies ────────────────────────────────────────────
+      - name: Install dependencies
+        run: cd day4 && uv sync
+
+      # ── 5. Train model ─────────────────────────────────────────────────────
+      - name: Train LightGBM and log to MLflow
+        id: train
+        run: |
+          uv run --project day4 --frozen python day4/src/train.py \
+            --n-estimators 300 \
+            --learning-rate 0.1 \
+            --max-depth 5 \
+            --mlflow-uri "$MLFLOW_TRACKING_URI" \
+            --experiment-name "$EXPERIMENT_NAME" \
+            --run-name "ci-run-${{ github.sha }}" \
+            --data-path day1/generated/adult_income_issues.csv \
+            --register true \
+            --model-name "$MODEL_NAME"
+
+          # Make the run ID available to subsequent steps
+          echo "run_id=$(cat day4/outputs/last_run_id.txt)" >> $GITHUB_OUTPUT
+
+      # ── 6. NannyML drift check ─────────────────────────────────────────────
+      # continue-on-error: true so the report is ALWAYS uploaded, even if
+      # thresholds are exceeded.  A later step propagates the failure.
+      - name: Run NannyML drift and performance monitoring
+        id: drift-check
+        continue-on-error: true
+        run: |
+          mkdir -p "$OUTPUT_DIR"
+          uv run --project day4 --frozen python day4/src/nannyml_check.py \
+            --data-path day1/generated/adult_income_issues.csv \
+            --model-uri "runs:/${{ steps.train.outputs.run_id }}/model" \
+            --mlflow-uri "$MLFLOW_TRACKING_URI" \
+            --output-dir "$OUTPUT_DIR" \
+            --auc-threshold 0.78 \
+            --max-drifted-features 10 \
+            --fail-on-drift
+
+      # ── 7. Upload MLflow run artifacts ─────────────────────────────────────
+      - name: Upload MLflow run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-run-${{ github.sha }}
+          path: mlruns/
+          retention-days: 7
+
+      # ── 8. Upload NannyML reports ──────────────────────────────────────────
+      - name: Upload NannyML reports
+        uses: actions/upload-artifact@v4
+        if: always()   # upload even when drift-check step failed
+        with:
+          name: nannyml-report-${{ github.sha }}
+          path: ${{ env.OUTPUT_DIR }}/
+          retention-days: 7
+
+      # ── 9. Propagate drift failure ─────────────────────────────────────────
+      # This step fails the overall workflow if thresholds were exceeded in
+      # step 6, after ensuring that artifacts have been uploaded for inspection.
+      - name: Fail if drift or performance threshold exceeded
+        if: steps.drift-check.outcome == 'failure'
+        run: |
+          echo "::error::Drift or performance monitoring threshold exceeded."
+          echo "Download the 'nannyml-report-${{ github.sha }}' artifact for details."
+          exit 1
