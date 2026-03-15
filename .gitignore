@@ -214,3 +214,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Knowledge base (reference material, not shared)
+knowledge/
+*.gz
+
+# Course internal files (not shared with students)
+not_shared_*
+**/not_shared_*
+**/*__solution*
+**/CLAUDE.md
+**/.openml_cache/
+.DS_Store
+.vscode/
+.python-version
+da1_goal_prompt.md
+groups.md
+*_plan.md
+*_ideas.md
+*_spec.md
+day1/agenda_day1.md

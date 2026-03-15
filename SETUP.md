@@ -2,7 +2,14 @@
 
 ## Prerequisites
 
+- **Git** — needed to clone the repository
+  - macOS: install via `xcode-select --install` or [git-scm.com](https://git-scm.com/downloads/mac)
+  - Windows: download from [git-scm.com](https://git-scm.com/downloads/win)
+  - Linux: `sudo apt install git` (Debian/Ubuntu) or `sudo dnf install git` (Fedora)
+  - Verify: `git --version`
+
 - **Python 3.13+** — download from [python.org](https://www.python.org/downloads/)
+
 - **uv** (recommended) or **pip**
 
 Install uv if you don't have it:
@@ -15,13 +22,16 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-## Install and Run
+## Clone the Repository
 
 ```bash
-# Clone the repository
-git clone <repo-url>
+git clone https://github.com/CardoAI/ml_industry_course.git
 cd ml_industry_course
+```
 
+## Install Dependencies and Run
+
+```bash
 # Install dependencies
 uv sync
 
