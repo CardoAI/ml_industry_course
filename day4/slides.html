@@ -5446,46 +5446,19 @@ blockquote {
 <pre is="marp-pre" data-auto-scaling="downscale-only"><code class="language-yaml"><span class="hljs-attr">services:</span>
   <span class="hljs-attr">mlflow:</span>
     <span class="hljs-attr">image:</span> <span class="hljs-string">python:3.12-slim</span>
-    <span class="hljs-attr">command:</span> <span class="hljs-string">&gt;
-      bash -c &quot;pip install mlflow -q &amp;&amp;
-      mlflow server --host 0.0.0.0 --port 5000
-        --backend-store-uri sqlite:///day4/mlflow.db&quot;
-</span>    <span class="hljs-attr">volumes:</span> [<span class="hljs-string">&quot;./day4:/app/day4&quot;</span>]
-    <span class="hljs-attr">ports:</span> [<span class="hljs-string">&quot;5000:5000&quot;</span>]
-    <span class="hljs-attr">healthcheck:</span> <span class="hljs-string">...</span>
+    <span class="hljs-attr">command:</span> <span class="hljs-string">bash</span> <span class="hljs-string">-c</span> <span class="hljs-string">&quot;pip install mlflow -q &amp;&amp; mlflow server ...&quot;</span>
+    <span class="hljs-attr">volumes:</span> [<span class="hljs-string">&quot;./day4:/app/day4&quot;</span>]    <span class="hljs-comment"># SQLite DB persists on host</span>
+    <span class="hljs-attr">ports:</span> [<span class="hljs-string">&quot;5000:5000&quot;</span>]             <span class="hljs-comment"># MLflow UI</span>
+    <span class="hljs-attr">healthcheck:</span> <span class="hljs-string">...</span>                 <span class="hljs-comment"># model-svc waits for this</span>
 
   <span class="hljs-attr">model-svc:</span>
-    <span class="hljs-attr">image:</span> <span class="hljs-string">adult-income-predictor:latest</span>   <span class="hljs-comment"># pre-built image</span>
-    <span class="hljs-attr">ports:</span> [<span class="hljs-string">&quot;8080:8080&quot;</span>]
+    <span class="hljs-attr">image:</span> <span class="hljs-string">adult-income-predictor:latest</span>   <span class="hljs-comment"># pre-built, model baked in</span>
+    <span class="hljs-attr">ports:</span> [<span class="hljs-string">&quot;8080:8080&quot;</span>]                   <span class="hljs-comment"># API + /docs</span>
     <span class="hljs-attr">depends_on:</span>
       <span class="hljs-attr">mlflow:</span> { <span class="hljs-attr">condition:</span> <span class="hljs-string">service_healthy</span> }
 </code></pre>
-<p><strong>Start everything:</strong> <code>make -f day4/Makefile docker-compose-up</code></p>
-<table>
-<thead>
-<tr>
-<th>URL</th>
-<th>Service</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>localhost:5000</code></td>
-<td>MLflow UI</td>
-</tr>
-<tr>
-<td><code>localhost:8080</code></td>
-<td>Prediction API</td>
-</tr>
-<tr>
-<td><code>localhost:8080/docs</code></td>
-<td>Swagger / OpenAPI</td>
-</tr>
-</tbody>
-</table>
-<blockquote>
-<p>The model is already baked into the <code>model-svc</code> image. The MLflow container is for the UI and experiment history only.</p>
-</blockquote>
+<p><strong>Start:</strong> <code>make -f day4/Makefile docker-compose-up</code><br />
+<strong>Endpoints:</strong> <code>localhost:5000</code> (MLflow UI) · <code>localhost:8080</code> (API) · <code>localhost:8080/docs</code></p>
 </section>
 </foreignObject></svg><svg data-marpit-svg="" viewBox="0 0 1280 720"><foreignObject width="1280" height="720"><section id="38" data-paginate="true" data-theme="default" data-style="/* ── Cardo AI corporate template ────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&amp;display=swap');
@@ -5760,22 +5733,49 @@ blockquote {
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&amp;display=swap')
 ;" data-marpit-pagination-total="45">
 <h1 id="what-a-production-pipeline-adds">What a Production Pipeline Adds</h1>
-<p>Our demo workflow stops at &quot;upload artifacts.&quot; A production pipeline <strong>closes the loop</strong>:</p>
-<pre is="marp-pre" data-auto-scaling="downscale-only"><code class="language-text">  ┌─────────────────────── our demo (slides 38) ──────────────────────────┐
-  │                                                                       │
-  train.py ──► nannyml_check.py ──► upload artifacts                      │
-                                         │                                │
-  ┌──────────────────────────────────────────── production adds ──────────┐│
-  │                                      ▼                               ││
-  │                               docker build                           ││
-  │                                      │                               ││
-  │                               docker push  → container registry      ││
-  │                                      │        (ECR, GCR, GHCR)       ││
-  │                               deploy trigger → Kubernetes / ECS      ││
-  └──────────────────────────────────────────────────────────────────────┘│
-  └───────────────────────────────────────────────────────────────────────┘
-</code></pre>
-<p><strong>The key point:</strong> Docker is not a standalone tool. It is the <strong>packaging step</strong> that turns a trained model into a deployable artifact, automated by CI/CD.</p>
+<p>Our demo stops at &quot;upload artifacts.&quot; A production pipeline <strong>closes the loop</strong>:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Step</th>
+<th>Tool</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Our demo</strong></td>
+<td><code>train.py</code></td>
+<td>MLflow</td>
+</tr>
+<tr>
+<td></td>
+<td><code>nannyml_check.py</code></td>
+<td>NannyML</td>
+</tr>
+<tr>
+<td></td>
+<td>Upload artifacts</td>
+<td>GitHub Actions</td>
+</tr>
+<tr>
+<td><strong>Production adds</strong></td>
+<td><code>docker build</code></td>
+<td>Dockerfile</td>
+</tr>
+<tr>
+<td></td>
+<td><code>docker push</code></td>
+<td>Container registry (ECR, GCR, GHCR)</td>
+</tr>
+<tr>
+<td></td>
+<td>Deploy</td>
+<td>Kubernetes / ECS / ArgoCD</td>
+</tr>
+</tbody>
+</table>
+<p>Docker is not a standalone tool — it is the <strong>packaging step</strong> that turns a trained model into a deployable artifact, automated by CI/CD.</p>
 <blockquote>
 <p>In our course: <code>make docker-build</code> is manual. In production, the CI runner does it on every successful training run.</p>
 </blockquote>

@@ -18,11 +18,22 @@
 services:
 
   # ── MLflow tracking server ─────────────────────────────────────────────────
+  # Provides the MLflow UI for inspecting experiment runs, metrics, and artifacts.
+  # Uses a lightweight Python image and installs mlflow at startup.
   mlflow:
     image: python:3.12-slim
     working_dir: /app
+
+    # Mount the day4 directory so the SQLite database and artifacts persist
+    # on the host filesystem (not lost when the container stops).
     volumes:
       - ./day4:/app/day4
+
+    # Install mlflow at container start, then launch the tracking server.
+    # --host 0.0.0.0: listen on all interfaces (required for Docker networking)
+    # --port 5000: the MLflow UI will be at http://localhost:5000
+    # --backend-store-uri: where runs/experiments/metrics are stored (SQLite file)
+    # --default-artifact-root: where model files and reports are saved on disk
     command: >
       bash -c "
         pip install mlflow -q &&
@@ -32,8 +43,13 @@ services:
           --backend-store-uri sqlite:///day4/mlflow.db
           --default-artifact-root /app/day4/mlartifacts
       "
+
+    # Expose port 5000 on the host → MLflow UI at http://localhost:5000
     ports:
       - "5000:5000"
+
+    # Docker checks this endpoint to know when MLflow is ready.
+    # model-svc won't start until this passes (see depends_on below).
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
@@ -41,10 +57,19 @@ services:
       retries: 5
 
   # ── Prediction service ─────────────────────────────────────────────────────
+  # The FastAPI app serving model predictions. The model is already baked into
+  # this image (built by `make docker-build`), so no MLflow server is needed
+  # for inference — the mlflow container above is only for the UI.
   model-svc:
     image: adult-income-predictor:latest
+
+    # Expose port 8080 on the host → API at http://localhost:8080
+    # Interactive docs at http://localhost:8080/docs
     ports:
       - "8080:8080"
+
+    # Wait for the MLflow healthcheck to pass before starting.
+    # condition: service_healthy means Docker checks the healthcheck above.
     depends_on:
       mlflow:
         condition: service_healthy

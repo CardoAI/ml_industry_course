@@ -986,30 +986,20 @@ CMD ["uvicorn", "src.predict:app", "--host", "0.0.0.0", "--port", "8080"]
 services:
   mlflow:
     image: python:3.12-slim
-    command: >
-      bash -c "pip install mlflow -q &&
-      mlflow server --host 0.0.0.0 --port 5000
-        --backend-store-uri sqlite:///day4/mlflow.db"
-    volumes: ["./day4:/app/day4"]
-    ports: ["5000:5000"]
-    healthcheck: ...
+    command: bash -c "pip install mlflow -q && mlflow server ..."
+    volumes: ["./day4:/app/day4"]    # SQLite DB persists on host
+    ports: ["5000:5000"]             # MLflow UI
+    healthcheck: ...                 # model-svc waits for this
 
   model-svc:
-    image: adult-income-predictor:latest   # pre-built image
-    ports: ["8080:8080"]
+    image: adult-income-predictor:latest   # pre-built, model baked in
+    ports: ["8080:8080"]                   # API + /docs
     depends_on:
       mlflow: { condition: service_healthy }
 ```
 
-**Start everything:** `make -f day4/Makefile docker-compose-up`
-
-| URL | Service |
-| --- | --- |
-| `localhost:5000` | MLflow UI |
-| `localhost:8080` | Prediction API |
-| `localhost:8080/docs` | Swagger / OpenAPI |
-
-> The model is already baked into the `model-svc` image. The MLflow container is for the UI and experiment history only.
+**Start:** `make -f day4/Makefile docker-compose-up`
+**Endpoints:** `localhost:5000` (MLflow UI) · `localhost:8080` (API) · `localhost:8080/docs`
 
 ---
 
@@ -1051,25 +1041,18 @@ Runner: `ubuntu-latest` (4 vCPU, 16 GB RAM — free on public repos).
 
 # What a Production Pipeline Adds
 
-Our demo workflow stops at "upload artifacts." A production pipeline **closes the loop**:
+Our demo stops at "upload artifacts." A production pipeline **closes the loop**:
 
-```text
-  ┌─────────────────────── our demo (slides 38) ──────────────────────────┐
-  │                                                                       │
-  train.py ──► nannyml_check.py ──► upload artifacts                      │
-                                         │                                │
-  ┌──────────────────────────────────────────── production adds ──────────┐│
-  │                                      ▼                               ││
-  │                               docker build                           ││
-  │                                      │                               ││
-  │                               docker push  → container registry      ││
-  │                                      │        (ECR, GCR, GHCR)       ││
-  │                               deploy trigger → Kubernetes / ECS      ││
-  └──────────────────────────────────────────────────────────────────────┘│
-  └───────────────────────────────────────────────────────────────────────┘
-```
+| | Step | Tool |
+|---|---|---|
+| **Our demo** | `train.py` | MLflow |
+| | `nannyml_check.py` | NannyML |
+| | Upload artifacts | GitHub Actions |
+| **Production adds** | `docker build` | Dockerfile |
+| | `docker push` | Container registry (ECR, GCR, GHCR) |
+| | Deploy | Kubernetes / ECS / ArgoCD |
 
-**The key point:** Docker is not a standalone tool. It is the **packaging step** that turns a trained model into a deployable artifact, automated by CI/CD.
+Docker is not a standalone tool — it is the **packaging step** that turns a trained model into a deployable artifact, automated by CI/CD.
 
 > In our course: `make docker-build` is manual. In production, the CI runner does it on every successful training run.
 
