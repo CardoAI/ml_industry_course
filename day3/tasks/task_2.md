@@ -2,6 +2,7 @@
 
 You are given a dataset containing, for each observation index \(k = 1, \ldots, K\) and category index \(j = 1, \ldots, C\), the values \(\{(s_{jk}, m_{jk})\}\). Consider the likelihood contribution for observation \(k\) defined by
 
+$$
 \[
 f_k(\theta)
 =
@@ -12,6 +13,7 @@ f_k(\theta)
 \left(1 - p_j(y;\theta)\right)^{m_{jk}-s_{jk}}
 \phi(y)\, dy,
 \]
+$$
 
 where \(\phi(y)\) is a known density (given), and \(p_j(y;\theta)\) is a known model function parameterized by \(\theta\).
 
