@@ -15,6 +15,13 @@ f_k(\theta)
 
 where $\(\phi(y)\)$ is a known density (given), and $\(p_j(y;\theta)\)$ is a known model function parameterized by $\(\theta\)$.
 
+$$
+\[
+p_j(y)
+= \Phi\!\left(\frac{\Phi^{-1}(\mathrm{PD}_j)-\sqrt{\rho_j}\,y}{\sqrt{1-\rho_j}}\right).
+\]
+$$
+
 ## 1. Form the full likelihood over the dataset
 
 $$
