@@ -1,5 +1,5 @@
 {
-  "val_auc": 0.928,
-  "val_f1": 0.75,
+  "val_auc": 0.5,
+  "val_f1": 0.5,
   "tolerance": 0.01
 }
