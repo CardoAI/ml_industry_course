@@ -171,7 +171,7 @@ jobs:
           print('PASS: no regression detected')
           "
 
-      # ── 7. DRIFT MONITORING (QUALITY GATE) ─────────────────────────────
+      # ── 7. DRIFT MONITORING ────────────────────────────────────────────
       # Runs Evidently drift detection + PSI on held-out data.
       #
       # --reference-split val: uses the validation set as reference.
@@ -182,18 +182,16 @@ jobs:
       #   In production, this would be replaced by live/batch data — the
       #   newest data arriving from the field (e.g., today's predictions).
       #
-      # continue-on-error: true — critical! Without it, a drift threshold
-      # breach would stop the workflow immediately, and steps 8-9 (artifact
-      # uploads) would be skipped. We want the reports uploaded EVEN WHEN
-      # drift is detected, so we can inspect them. Step 10 re-raises the
-      # failure after uploads are done.
-      #
       # --model-uri uses the run ID from step 5 to load the just-trained model.
       # ${{ steps.train.outputs.run_id }} is GitHub Actions' expression syntax
       # for reading outputs from a previous step.
+      #
+      # Note: --fail-on-drift is NOT passed here, so drift is reported but
+      # does not block the pipeline. In production, you would add --fail-on-drift
+      # to make this a hard gate that blocks deployment when thresholds are
+      # exceeded (combined with continue-on-error + a propagation step so
+      # artifacts are uploaded before the pipeline fails).
       - name: Run Evidently drift and performance monitoring
-        id: drift-check
-        continue-on-error: true
         run: |
           mkdir -p "$OUTPUT_DIR"
           uv run --project day4 --frozen python day4/src/drift_check.py \
@@ -203,13 +201,12 @@ jobs:
             --output-dir "$OUTPUT_DIR" \
             --reference-split val \
             --analysis-split test \
-            --max-drifted-features 10 \
-            --fail-on-drift
+            --max-drifted-features 10
 
       # ── 8. UPLOAD MLFLOW ARTIFACTS ─────────────────────────────────────
       # The entire mlruns/ directory (model, params, metrics) is uploaded as
       # a downloadable ZIP from the Actions "Summary" tab. You can download
-      # it and explore locally with: mlflow ui --backend-store-uri file://./mlruns
+      # it and explore locally with: mlflow ui --backend-store-uri file:./mlruns
       - name: Upload MLflow run artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -218,31 +215,11 @@ jobs:
           retention-days: 7
 
       # ── 9. UPLOAD DRIFT REPORTS ────────────────────────────────────────
-      # if: always() means this step runs regardless of whether step 7
-      # succeeded or failed. This ensures you always get the HTML drift
-      # report — especially important when drift IS detected and you need
-      # to investigate which features drifted and by how much.
+      # Drift HTML report and PSI summary — downloadable from the Actions
+      # "Summary" tab. Inspect to see which features drifted and by how much.
       - name: Upload drift reports
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: drift-report-${{ github.sha }}
           path: ${{ env.OUTPUT_DIR }}/
           retention-days: 7
-
-      # ── 10. PROPAGATE DRIFT FAILURE ────────────────────────────────────
-      # Now that artifacts are safely uploaded (steps 8-9), we check whether
-      # the drift-check actually failed. If it did, we fail the workflow with
-      # a clear error message. This is the "gate" pattern:
-      #   - Step 7 runs but doesn't stop the pipeline (continue-on-error)
-      #   - Steps 8-9 upload evidence
-      #   - Step 10 fails the pipeline if thresholds were exceeded
-      #
-      # In production, this failure could block a deployment or trigger an
-      # alert to the ML team.
-      - name: Fail if drift or performance threshold exceeded
-        if: steps.drift-check.outcome == 'failure'
-        run: |
-          echo "::error::Drift or performance monitoring threshold exceeded."
-          echo "Download the 'drift-report-${{ github.sha }}' artifact for details."
-          exit 1

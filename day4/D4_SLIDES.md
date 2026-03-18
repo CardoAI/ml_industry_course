@@ -1158,15 +1158,15 @@ services:
   6. CHAMPION / CHALLENGER GATE (compare AUC vs baseline_metrics.json)
         │
   7. DRIFT CHECK                (drift_check.py, ref=val, analysis=test)
-        │                       (continue-on-error — uploads first, fails later)
+        │                       (reports drift — doesn't block the pipeline)
   8. upload MLflow artifacts     (mlruns/ → Actions artifact, 7 days)
         │
-  9. upload drift reports        (if: always() — even on failure)
-        │
- 10. fail if drift exceeded      (propagate exit code from step 7)
+  9. upload drift reports        (HTML report + PSI summary)
 ```
 
 Runner: `ubuntu-latest` (4 vCPU, 16 GB RAM — free on public repos).
+
+> In production, add `--fail-on-drift` to step 7 to make it a hard gate that blocks deployment.
 
 ---
 
