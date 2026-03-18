@@ -194,7 +194,7 @@ jobs:
       - name: Run Evidently drift and performance monitoring
         run: |
           mkdir -p "$OUTPUT_DIR"
-          uv run --project day4 --frozen python day4/src/drift_check.py \
+          uv run --project day4 --frozen python -m src.drift_check \
             --data-path day1/generated/adult_income_issues.csv \
             --model-uri "runs:/${{ steps.train.outputs.run_id }}/model" \
             --mlflow-uri "$MLFLOW_TRACKING_URI" \

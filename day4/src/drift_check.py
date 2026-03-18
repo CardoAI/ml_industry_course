@@ -44,7 +44,7 @@ from evidently.metrics import DriftedColumnsCount, ValueDrift
 from evidently.presets import DataDriftPreset
 
 # Re-use the same constants and helpers from train.py
-from day4.src.train import (
+from src.train import (
     DATA_PATH,
     EXCLUDE_COLS,
     SEED,
