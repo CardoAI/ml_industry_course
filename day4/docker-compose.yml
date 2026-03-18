@@ -1,13 +1,39 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Day 4 — MLOps: Docker Compose
+# Day 4 — MLOps: Docker Compose (Local Development / Staging)
 #
-# Brings up two services together:
-#   - mlflow     — local MLflow tracking server (UI + artifact store)
-#   - model-svc  — FastAPI prediction service (model baked into image)
+# Docker Compose is a tool for defining multi-container applications.
+# It is designed for LOCAL DEVELOPMENT and STAGING — not production.
+# In production, you would use an orchestrator like:
+#   - Kubernetes (EKS, GKE, AKS) — the industry standard
+#   - AWS ECS / Google Cloud Run — managed container platforms
+#   - Docker Swarm — simpler but less capable
+#
+# The patterns here — health checks, environment-based configuration,
+# restart policies, service dependencies — transfer directly to those
+# production orchestrators.
+#
+# This file brings up two services:
+#   - mlflow     — tracking server (experiment UI + model registry)
+#   - model-svc  — FastAPI prediction service (loads model from registry)
+#
+# Two ways to run the prediction service:
+#
+#   docker run (standalone):
+#     Uses the model baked into the image at build time.
+#     No external dependencies — good for demos and air-gapped environments.
+#
+#   docker compose up (this file):
+#     Overrides MODEL_URI to pull from the MLflow registry instead.
+#     This lets you swap model versions without rebuilding the image —
+#     just update the @champion alias and restart the service.
 #
 # Usage:
-#   # First run `make train` and `make docker-build`, then:
-#   make -f day4/Makefile docker-compose-up
+#   # Requires: make mlflow-server + make train + make docker-build
+#  Specifically:
+#   make -f day4/Makefile mlflow-server   # terminal 1 (if not already running)
+#   make -f day4/Makefile train           # generates last_run_id.txt + @champion alias
+#   make -f day4/Makefile docker-build    # builds adult-income-predictor:latest locally
+#   make -f day4/Makefile docker-compose-up  # now it finds the image
 #
 # Endpoints:
 #   MLflow UI      →  http://localhost:5000
@@ -18,58 +44,79 @@
 services:
 
   # ── MLflow tracking server ─────────────────────────────────────────────────
-  # Provides the MLflow UI for inspecting experiment runs, metrics, and artifacts.
-  # Uses a lightweight Python image and installs mlflow at startup.
+  # Provides the MLflow UI and model registry.
+  # Uses the official pre-built MLflow image (pinned version for
+  # reproducibility — never use :latest in a real project).
   mlflow:
-    image: python:3.12-slim
+    image: ghcr.io/mlflow/mlflow:v2.21.3
+
     working_dir: /app
 
-    # Mount the day4 directory so the SQLite database and artifacts persist
-    # on the host filesystem (not lost when the container stops).
+    # Mount the day4 directory so the SQLite database and model artifacts
+    # persist on the host filesystem (not lost when the container stops).
+    # Artifact URIs in mlflow.db are relative (./day4/mlartifacts/...).
+    # With working_dir: /app and this mount, they resolve correctly.
     volumes:
       - ./day4:/app/day4
 
-    # Install mlflow at container start, then launch the tracking server.
-    # --host 0.0.0.0: listen on all interfaces (required for Docker networking)
-    # --port 5000: the MLflow UI will be at http://localhost:5000
-    # --backend-store-uri: where runs/experiments/metrics are stored (SQLite file)
-    # --default-artifact-root: where model files and reports are saved on disk
+    # Launch the tracking server.
+    # --host 0.0.0.0: listen on all interfaces (required inside Docker)
+    # --backend-store-uri: metadata (runs, metrics, params) in SQLite
+    # --default-artifact-root: model files and reports on local filesystem
     command: >
-      bash -c "
-        pip install mlflow -q &&
-        mlflow server
-          --host 0.0.0.0
-          --port 5000
-          --backend-store-uri sqlite:///day4/mlflow.db
-          --default-artifact-root /app/day4/mlartifacts
-      "
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri sqlite:///day4/mlflow.db
+        --default-artifact-root /app/day4/mlartifacts
 
-    # Expose port 5000 on the host → MLflow UI at http://localhost:5000
     ports:
       - "5000:5000"
 
-    # Docker checks this endpoint to know when MLflow is ready.
-    # model-svc won't start until this passes (see depends_on below).
+    # Health check — Docker (and orchestrators like K8s) use this to know
+    # when the service is ready to accept traffic.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+    # Restart automatically if the process crashes.
+    # "unless-stopped" means: always restart, unless the user explicitly
+    # ran `docker compose stop`. In K8s, this maps to restartPolicy: Always.
+    restart: unless-stopped
+
   # ── Prediction service ─────────────────────────────────────────────────────
-  # The FastAPI app serving model predictions. The model is already baked into
-  # this image (built by `make docker-build`), so no MLflow server is needed
-  # for inference — the mlflow container above is only for the UI.
+  # FastAPI app serving model predictions. At startup it connects to the
+  # MLflow service above and loads the champion model from the registry.
   model-svc:
     image: adult-income-predictor:latest
 
-    # Expose port 8080 on the host → API at http://localhost:8080
-    # Interactive docs at http://localhost:8080/docs
+    # Override the baked-in MODEL_URI so the service pulls from the MLflow
+    # registry instead of using the model copied into the image at build time.
+    # "mlflow" is the Docker Compose service name → resolves via internal DNS.
+    # This is more realistic: in production you configure model versions via
+    # environment variables, not by rebuilding the image.
+    environment:
+      - MODEL_URI=models:/adult-income-classifier@champion
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+
     ports:
       - "8080:8080"
 
+    # Health check on the prediction service — uses the /health endpoint
+    # that predict.py already exposes. Reports model_loaded status too.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
     # Wait for the MLflow healthcheck to pass before starting.
-    # condition: service_healthy means Docker checks the healthcheck above.
+    # Without this, model-svc would try to load the model before MLflow
+    # is ready, and fail with a connection error.
     depends_on:
       mlflow:
         condition: service_healthy
+
+    restart: unless-stopped

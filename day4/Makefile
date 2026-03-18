@@ -10,7 +10,8 @@
 #   2a. make -f day4/Makefile mlflow-server   ← run in a separate terminal
 #   2b. make -f day4/Makefile train
 #   3.  make -f day4/Makefile drift-check
-#   4.  make -f day4/Makefile docker-build
+#   4.  make -f day4/Makefile api            ← run locally (no Docker)
+#   5.  make -f day4/Makefile docker-build
 #       make -f day4/Makefile docker-run
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -29,8 +30,8 @@ MODEL_RUN_ID   ?= $(shell cat $(RUN_ID_FILE) 2>/dev/null)
 
 .DEFAULT_GOAL  := help
 
-.PHONY: help install kernel-install nannyml-install mlflow-server train drift-check \
-        docker-build docker-run docker-compose-up clean
+.PHONY: help install kernel-install mlflow-server train drift-check \
+        api docker-build docker-run docker-compose-up clean
 
 # ── Help ───────────────────────────────────────────────────────────────────────
 help: ## Show available targets
@@ -50,16 +51,14 @@ kernel-install: ## Register the Jupyter kernel for VS Code / Jupyter
 	    --name mlops-industry-course \
 	    --display-name "MLOps Industry Course"
 
-nannyml-install: ## Install NannyML in an isolated compat env (needed if pandas conflict)
-	cd day4/nannyml-compat && uv sync
-
 # ── MLflow server (run in a separate terminal) ─────────────────────────────────
 mlflow-server: ## Start the local MLflow tracking server (separate terminal)
 	@echo "Open http://127.0.0.1:5000 in your browser once the server is ready."
 	$(UV_RUN) mlflow server \
 	    --host 127.0.0.1 \
 	    --port 5000 \
-	    --backend-store-uri sqlite:///mlflow.db
+	    --backend-store-uri sqlite:///day4/mlflow.db \
+	    --default-artifact-root ./day4/mlartifacts
 
 # ── Training ───────────────────────────────────────────────────────────────────
 train: ## Train LightGBM and log the run to MLflow; saves run ID to outputs/
@@ -80,19 +79,26 @@ train: ## Train LightGBM and log the run to MLflow; saves run ID to outputs/
 	@echo "Open http://127.0.0.1:5000 to inspect the run."
 
 # ── Drift detection ────────────────────────────────────────────────────────────
-drift-check: ## Run NannyML drift and performance check; log report to MLflow
+drift-check: ## Run Evidently drift check; log report to MLflow
 	@if [ ! -f $(RUN_ID_FILE) ]; then \
 	    echo "❌  No run ID found. Run 'make -f day4/Makefile train' first."; \
 	    exit 1; \
 	fi
-	$(UV_RUN) python day4/src/nannyml_check.py \
+	$(UV_RUN) python day4/src/drift_check.py \
 	    --data-path $(DATA_PATH) \
-	    --model-uri "models:/$(MODEL_NAME)/Production" \
+	    --model-uri "models:/$(MODEL_NAME)@champion" \
 	    --mlflow-uri $(MLFLOW_URI) \
 	    --output-dir $(OUTPUT_DIR) \
 	    --fail-on-drift \
 	    2>&1 | tee $(OUTPUT_DIR)/drift.log
-	@echo "NannyML reports saved to $(OUTPUT_DIR)/"
+	@echo "Drift reports saved to $(OUTPUT_DIR)/"
+
+# ── Local prediction API (no Docker) ──────────────────────────────────────────
+api: ## Run the FastAPI prediction service locally (requires mlflow-server + train)
+	@echo "Serving at http://127.0.0.1:8080  (docs: http://127.0.0.1:8080/docs)"
+	MODEL_URI="models:/$(MODEL_NAME)@champion" \
+	MLFLOW_TRACKING_URI="$(MLFLOW_URI)" \
+	$(UV_RUN) uvicorn day4.src.predict:app --host 127.0.0.1 --port 8080
 
 # ── Docker ─────────────────────────────────────────────────────────────────────
 docker-build: ## Build the prediction service Docker image

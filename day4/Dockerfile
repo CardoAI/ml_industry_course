@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && \
 
 # Install only the Python packages the prediction service needs at runtime.
 # --no-cache-dir avoids storing pip's download cache inside the image.
-# No dev tools (pytest, jupyter, nannyml) — keeps the image lean.
+# No dev tools (pytest, jupyter, evidently) — keeps the image lean.
 RUN pip install --no-cache-dir \
     mlflow \
     fastapi \

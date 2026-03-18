@@ -1,28 +1,51 @@
 name: ML Pipeline
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Day 4 — MLOps: CI/CD Demonstration Workflow
+# Day 4 — MLOps: CI for ML
 #
-# Triggered on every push that touches the day4/ directory.
-# Can also be triggered manually from the Actions tab (workflow_dispatch).
+# This workflow demonstrates three production patterns:
 #
-# What it does:
-#   1. Installs dependencies
-#   2. Trains the LightGBM model, logging to a local (file-based) MLflow instance
-#   3. Runs NannyML drift and performance monitoring
-#   4. Uploads MLflow artifacts and NannyML reports as GitHub Actions artifacts
+#   1. AUTOMATED TRAINING on code change (push trigger) and on schedule (cron)
+#      → Ensures the model stays up to date and code changes don't break it.
 #
-# Architecture note:
-#   MLflow uses `file://./mlruns` as the tracking URI — all artifacts stay on
-#   the runner and are uploaded to GitHub Actions after the job finishes.
-#   In production, you would point MLFLOW_TRACKING_URI at a shared remote server
-#   (e.g., an MLflow server backed by S3, Azure Blob, or GCS) so that CI runs
-#   and local developer runs share the same experiment history.
+#   2. CHAMPION/CHALLENGER GATE
+#      → Compares the newly trained model against a committed baseline
+#        (day4/baseline_metrics.json). Fails the pipeline if AUC regresses.
+#        This prevents deploying a model that's worse than the current champion.
 #
-# Runners:
-#   ubuntu-latest (GitHub-hosted, 4 vCPUs / 16 GB RAM, free on public repos)
+#   3. DRIFT MONITORING on held-out data
+#      → Runs Evidently drift detection using the validation split as
+#        reference and the test split as analysis. In production, the analysis
+#        split would be replaced by live/batch data from the last 24 hours.
+#
+# Key difference from your local setup:
+#   Locally you used an MLflow tracking server (http://127.0.0.1:5000).
+#   Here we use file-based tracking (file://./mlruns) because there's no
+#   persistent server on a CI runner — it's a fresh VM that gets destroyed
+#   after the job finishes. The artifacts are saved via upload-artifact.
+#
+# In production, you would point MLFLOW_TRACKING_URI at a shared remote
+# server (e.g., backed by S3, Azure Blob, or GCS) so CI runs and local
+# developer runs share the same experiment history.
+#
+# Runner: ubuntu-latest (GitHub-hosted, 4 vCPUs / 16 GB RAM, free on public repos)
 # ──────────────────────────────────────────────────────────────────────────────
 
+# ── TRIGGERS ─────────────────────────────────────────────────────────────────
+# This pipeline runs in two scenarios:
+#
+# 1. push + paths: when code in day4/ or this workflow file changes.
+#    Avoids wasting CI minutes on unrelated commits to day1/, day2/, etc.
+#
+# 2. workflow_dispatch: adds a "Run workflow" button in the Actions tab
+#    so you can trigger it manually without pushing code.
+#
+# In production, you'd add a schedule trigger for nightly retraining on
+# fresh data (uncomment the block below). With our static dataset there's
+# no new data arriving, so scheduled runs would just repeat the same result.
+#
+#   schedule:
+#     - cron: "0 2 * * *"   # nightly at 02:00 UTC
 on:
   push:
     paths:
@@ -32,21 +55,32 @@ on:
 
 jobs:
   ml-pipeline:
-    name: Train → Monitor → Upload
+    name: Train → Validate → Monitor → Upload
     runs-on: ubuntu-latest
 
+    # ── ENVIRONMENT VARIABLES ────────────────────────────────────────────────
+    # Available to every step via $VARIABLE_NAME.
+    # Centralised here so the experiment name or model name can be changed
+    # in one place.
     env:
+      # file-based MLflow — no server needed on the CI runner
       MLFLOW_TRACKING_URI: "file://./mlruns"
       EXPERIMENT_NAME: "ci-adult-income"
       MODEL_NAME: "adult-income-classifier"
-      OUTPUT_DIR: "/tmp/nannyml_outputs"
+      # Drift reports go here; uploaded as an artifact in step 8
+      OUTPUT_DIR: "/tmp/drift_outputs"
 
     steps:
-      # ── 1. Checkout ────────────────────────────────────────────────────────
+      # ── 1. CHECKOUT ──────────────────────────────────────────────────────
+      # Clone the repository onto the runner. Without this, there's no code
+      # to work with. actions/checkout@v4 is the official GitHub action.
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2. Python + uv setup ───────────────────────────────────────────────
+      # ── 2. PYTHON + UV SETUP ─────────────────────────────────────────────
+      # The runner has Python pre-installed, but we pin to 3.12 to match
+      # the training environment (reproducibility!). uv is our package
+      # manager — much faster than pip for installing dependencies.
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
@@ -55,7 +89,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      # ── 3. Dependency cache ────────────────────────────────────────────────
+      # ── 3. DEPENDENCY CACHE ──────────────────────────────────────────────
+      # Caching saves ~30-60s per run. The cache key includes the lockfile
+      # hash, so if dependencies change, a fresh install happens automatically.
+      # restore-keys allows partial cache hits (e.g., same OS, older lockfile).
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
@@ -64,11 +101,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-uv-
 
-      # ── 4. Install dependencies ────────────────────────────────────────────
+      # ── 4. INSTALL DEPENDENCIES ──────────────────────────────────────────
+      # uv sync reads pyproject.toml + uv.lock and installs exact versions.
+      # This is the CI equivalent of `make install` from the workshop.
       - name: Install dependencies
         run: cd day4 && uv sync
 
-      # ── 5. Train model ─────────────────────────────────────────────────────
+      # ── 5. TRAIN MODEL ──────────────────────────────────────────────────
+      # Same train.py you ran locally, but with file-based MLflow.
+      # The run name includes the git SHA so you can trace any model back
+      # to the exact commit that produced it — key for reproducibility.
+      #
+      # id: train — gives this step an ID so later steps can read its outputs.
+      # $GITHUB_OUTPUT is how steps pass data to each other in GitHub Actions.
+      # We write the MLflow run ID so subsequent steps can load the model.
       - name: Train LightGBM and log to MLflow
         id: train
         run: |
@@ -83,27 +129,85 @@ jobs:
             --register true \
             --model-name "$MODEL_NAME"
 
-          # Make the run ID available to subsequent steps
+          # Pass the run ID to subsequent steps via GitHub Actions outputs
           echo "run_id=$(cat day4/outputs/last_run_id.txt)" >> $GITHUB_OUTPUT
 
-      # ── 6. NannyML drift check ─────────────────────────────────────────────
-      # continue-on-error: true so the report is ALWAYS uploaded, even if
-      # thresholds are exceeded.  A later step propagates the failure.
-      - name: Run NannyML drift and performance monitoring
+      # ── 6. CHAMPION/CHALLENGER GATE ────────────────────────────────────
+      # Compare the just-trained model's metrics against a committed baseline.
+      # day4/baseline_metrics.json acts as a contract: code changes must not
+      # degrade performance below the champion's AUC minus a tolerance.
+      #
+      # This is the most common CI gate in production ML. It prevents
+      # regressions from sneaking in through preprocessing changes,
+      # feature engineering bugs, or dependency updates.
+      #
+      # To update the baseline after an intentional improvement:
+      #   1. Retrain locally and verify the new metrics
+      #   2. Update baseline_metrics.json with the new values
+      #   3. Commit the updated baseline
+      - name: Champion/challenger — compare against baseline
+        run: |
+          uv run --project day4 --frozen python -c "
+          import json, mlflow, sys
+
+          mlflow.set_tracking_uri('$MLFLOW_TRACKING_URI')
+          run = mlflow.get_run('${{ steps.train.outputs.run_id }}')
+          new_auc = run.data.metrics['val_auc']
+
+          baseline = json.load(open('day4/baseline_metrics.json'))
+          champion_auc = baseline['val_auc']
+          tol = baseline.get('tolerance', 0.01)
+          diff = new_auc - champion_auc
+
+          print(f'New AUC:      {new_auc:.4f}')
+          print(f'Champion AUC: {champion_auc:.4f}')
+          print(f'Delta:        {diff:+.4f}  (tolerance: {tol})')
+
+          if new_auc < champion_auc - tol:
+              print(f'FAIL: regression exceeds tolerance')
+              sys.exit(1)
+          print('PASS: no regression detected')
+          "
+
+      # ── 7. DRIFT MONITORING (QUALITY GATE) ─────────────────────────────
+      # Runs Evidently drift detection + PSI on held-out data.
+      #
+      # --reference-split val: uses the validation set as reference.
+      #   In production, this would be a recent window of data where model
+      #   performance was known to be acceptable (e.g., last week's batch).
+      #
+      # --analysis-split test: uses the test set as the data to monitor.
+      #   In production, this would be replaced by live/batch data — the
+      #   newest data arriving from the field (e.g., today's predictions).
+      #
+      # continue-on-error: true — critical! Without it, a drift threshold
+      # breach would stop the workflow immediately, and steps 8-9 (artifact
+      # uploads) would be skipped. We want the reports uploaded EVEN WHEN
+      # drift is detected, so we can inspect them. Step 10 re-raises the
+      # failure after uploads are done.
+      #
+      # --model-uri uses the run ID from step 5 to load the just-trained model.
+      # ${{ steps.train.outputs.run_id }} is GitHub Actions' expression syntax
+      # for reading outputs from a previous step.
+      - name: Run Evidently drift and performance monitoring
         id: drift-check
         continue-on-error: true
         run: |
           mkdir -p "$OUTPUT_DIR"
-          uv run --project day4 --frozen python day4/src/nannyml_check.py \
+          uv run --project day4 --frozen python day4/src/drift_check.py \
             --data-path day1/generated/adult_income_issues.csv \
             --model-uri "runs:/${{ steps.train.outputs.run_id }}/model" \
             --mlflow-uri "$MLFLOW_TRACKING_URI" \
             --output-dir "$OUTPUT_DIR" \
-            --auc-threshold 0.78 \
+            --reference-split val \
+            --analysis-split test \
             --max-drifted-features 10 \
             --fail-on-drift
 
-      # ── 7. Upload MLflow run artifacts ─────────────────────────────────────
+      # ── 8. UPLOAD MLFLOW ARTIFACTS ─────────────────────────────────────
+      # The entire mlruns/ directory (model, params, metrics) is uploaded as
+      # a downloadable ZIP from the Actions "Summary" tab. You can download
+      # it and explore locally with: mlflow ui --backend-store-uri file://./mlruns
       - name: Upload MLflow run artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -111,21 +215,32 @@ jobs:
           path: mlruns/
           retention-days: 7
 
-      # ── 8. Upload NannyML reports ──────────────────────────────────────────
-      - name: Upload NannyML reports
+      # ── 9. UPLOAD DRIFT REPORTS ────────────────────────────────────────
+      # if: always() means this step runs regardless of whether step 7
+      # succeeded or failed. This ensures you always get the HTML drift
+      # report — especially important when drift IS detected and you need
+      # to investigate which features drifted and by how much.
+      - name: Upload drift reports
         uses: actions/upload-artifact@v4
-        if: always()   # upload even when drift-check step failed
+        if: always()
         with:
-          name: nannyml-report-${{ github.sha }}
+          name: drift-report-${{ github.sha }}
           path: ${{ env.OUTPUT_DIR }}/
           retention-days: 7
 
-      # ── 9. Propagate drift failure ─────────────────────────────────────────
-      # This step fails the overall workflow if thresholds were exceeded in
-      # step 6, after ensuring that artifacts have been uploaded for inspection.
+      # ── 10. PROPAGATE DRIFT FAILURE ────────────────────────────────────
+      # Now that artifacts are safely uploaded (steps 8-9), we check whether
+      # the drift-check actually failed. If it did, we fail the workflow with
+      # a clear error message. This is the "gate" pattern:
+      #   - Step 7 runs but doesn't stop the pipeline (continue-on-error)
+      #   - Steps 8-9 upload evidence
+      #   - Step 10 fails the pipeline if thresholds were exceeded
+      #
+      # In production, this failure could block a deployment or trigger an
+      # alert to the ML team.
       - name: Fail if drift or performance threshold exceeded
         if: steps.drift-check.outcome == 'failure'
         run: |
           echo "::error::Drift or performance monitoring threshold exceeded."
-          echo "Download the 'nannyml-report-${{ github.sha }}' artifact for details."
+          echo "Download the 'drift-report-${{ github.sha }}' artifact for details."
           exit 1

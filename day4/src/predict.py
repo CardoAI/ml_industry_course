@@ -6,7 +6,7 @@ Designed to run inside a Docker container (see day4/Dockerfile).
 
 Usage (local, model from registry):
     # Requires MLflow tracking server to be running
-    MODEL_URI="models:/adult-income-classifier/Production" \\
+    MODEL_URI="models:/adult-income-classifier@champion" \\
     MLFLOW_TRACKING_URI="http://127.0.0.1:5000" \\
     uvicorn day4.src.predict:app --host 0.0.0.0 --port 8080
 
@@ -44,7 +44,7 @@ from pydantic import BaseModel
 
 # ── Configuration from environment variables ──────────────────────────────────
 MODEL_URI: str = os.getenv(
-    "MODEL_URI", "models:/adult-income-classifier/Production"
+    "MODEL_URI", "models:/adult-income-classifier@champion"
 )
 MLFLOW_TRACKING_URI: str = os.getenv(
     "MLFLOW_TRACKING_URI", "http://127.0.0.1:5000"

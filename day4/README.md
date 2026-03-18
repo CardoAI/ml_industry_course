@@ -14,7 +14,7 @@ Whether you are teaching this material or working through it independently, the 
 Slides (Blocks 1–4)
     └─ Block 1  Reproducibility (slides 3–19)
     └─ Block 2  Experiment tracking — follow along: notebooks/01_mlflow_tracking.ipynb
-    └─ Block 3  Drift & monitoring — follow along: notebooks/02_nannyml_monitoring.ipynb
+    └─ Block 3  Drift & monitoring — follow along: notebooks/02_drift_monitoring.ipynb
     └─ Block 4  Containers & CI/CD (pre-built examples, no live coding)
 
 Workshop (afternoon)
@@ -38,11 +38,11 @@ day4/
 ├── MLproject                     # MLflow Projects entry point
 ├── src/
 │   ├── train.py                  # Training script — MLflow logging, model registration
-│   ├── nannyml_check.py          # Drift detection script — CI gate (exit 1 on drift)
+│   ├── drift_check.py             # Drift detection script — CI gate (exit 1 on drift)
 │   └── predict.py                # FastAPI prediction service
 └── notebooks/
     ├── 01_mlflow_tracking.ipynb  # Block 2 demo — experiment tracking (30 min)
-    ├── 02_nannyml_monitoring.ipynb # Block 3 demo — drift detection (45 min)
+    ├── 02_drift_monitoring.ipynb    # Block 3 demo — drift detection (45 min)
     └── 03_workshop_skeleton.ipynb  # Afternoon workshop — TODOs for students
 ```
 
@@ -64,7 +64,7 @@ npx @marp-team/marp-cli day4/D4_SLIDES.md --html -o day4/slides.html
 
 ## Prerequisites
 
-- **Python ≥ 3.13**
+- **Python ≥ 3.11, < 3.14** (3.12 recommended)
 - **uv** — install with:
 
 ```bash
@@ -81,27 +81,16 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ## Setup
 
-> **Windows users:** The `make` commands require WSL or Git Bash. If neither is available, replace any `make -f day4/Makefile <target>` command with the equivalent `python` call shown in the Makefile for that target — the Python scripts themselves are fully cross-platform. For the NannyML compat environment, run `cd day4\nannyml-compat && uv sync` the same way — `uv` works natively on Windows.
+> **Windows users:** The `make` commands require WSL or Git Bash. If neither is available, replace any `make -f day4/Makefile <target>` command with the equivalent `python` call shown in the Makefile for that target — the Python scripts themselves are fully cross-platform. `uv` works natively on Windows.
 
 ### 1. Install dependencies
 
 From the **repo root**:
 
 ```bash
-uv sync --extra day4
-# or
 make -f day4/Makefile install
+# or: cd day4 && uv sync
 ```
-
-> **NannyML note:** NannyML 0.14.x requires `pandas < 2`, which conflicts with the main project's `pandas >= 3`. If `uv sync --extra day4` raises a conflict error, use the isolated compat environment instead:
->
-> ```bash
-> cd day4/nannyml-compat && uv sync
-> # or via Makefile:
-> make -f day4/Makefile nannyml-install
-> ```
->
-> Then prefix `nannyml_check.py` calls with `uv run --project day4/nannyml-compat`.
 
 ### 2. Start the MLflow tracking server
 
@@ -140,9 +129,9 @@ The run ID is saved to `day4/outputs/last_run_id.txt` for use in later steps.
 - Inspect the logged model artifact
 - Check Model Registry → `adult-income-classifier` → Production
 
-### Step 2 — Drift detection with NannyML
+### Step 2 — Drift detection with Evidently
 
-Open [notebooks/02_nannyml_monitoring.ipynb](notebooks/02_nannyml_monitoring.ipynb) for the lecture demo, or run from the command line:
+Open [notebooks/02_drift_monitoring.ipynb](notebooks/02_drift_monitoring.ipynb) for the lecture demo, or run from the command line:
 
 ```bash
 make -f day4/Makefile drift-check
@@ -152,7 +141,7 @@ This will:
 
 - Load the registered Production model
 - Build reference (train) and analysis (test) sets
-- Run CBPE to estimate performance without ground truth
+- Compute PSI for features and score distribution
 - Run univariate drift detection across all features
 - Save HTML reports to `day4/outputs/`
 - Log reports to MLflow as artifacts
@@ -211,7 +200,7 @@ The interactive API docs are at **[http://localhost:8080/docs](http://localhost:
 4. Wait for the `ML Pipeline` workflow to complete.
 5. Download the uploaded artifacts:
    - `mlflow-run-<sha>` — the full MLflow run directory (explore locally with `mlflow ui`)
-   - `nannyml-report-<sha>` — HTML drift and CBPE reports
+   - `drift-report-<sha>` — HTML drift report
 
 The workflow runs on a free `ubuntu-latest` GitHub-hosted runner — no cloud account needed.
 
@@ -225,9 +214,8 @@ The workflow runs on a free `ubuntu-latest` GitHub-hosted runner — no cloud ac
 |---|---|
 | `Address already in use` on port 5000 | macOS/Linux: `lsof -ti:5000 \| xargs kill` · Windows: `netstat -ano \| findstr :5000` then `taskkill /PID <pid>` |
 | `Address already in use` on port 8080 | macOS/Linux: `lsof -ti:8080 \| xargs kill` · Windows: `netstat -ano \| findstr :8080` then `taskkill /PID <pid>` |
-| NannyML `ImportError` | Run `cd day4/nannyml-compat && uv sync` (see Setup note above) |
 | `docker: command not found` | Install Docker Desktop from [docs.docker.com/get-started](https://docs.docker.com/get-started/) |
-| Docker build fails: `mlruns/ not found` | Run `make -f day4/Makefile train` first |
+| Docker build fails: `RESOURCE_DOES_NOT_EXIST` | Run `make mlflow-server` (separate terminal) then `make train` before `make docker-build`. The run ID in `day4/outputs/last_run_id.txt` must match a run in the MLflow server. |
 | MLflow model not in Production stage | Run `make -f day4/Makefile train` (registers automatically), then promote via UI if needed |
 
 ---
@@ -235,7 +223,7 @@ The workflow runs on a free `ubuntu-latest` GitHub-hosted runner — no cloud ac
 ## Key references
 
 - [MLflow Documentation](https://mlflow.org/docs/latest/index.html)
-- [NannyML Documentation](https://nannyml.readthedocs.io/)
+- [Evidently Documentation](https://docs.evidentlyai.com/)
 - [Failing Loudly — Rabanser et al., NeurIPS 2019](https://arxiv.org/abs/1810.11953)
 - [MLOps Principles](https://ml-ops.org/content/mlops-principles)
 - [Docker Getting Started](https://docs.docker.com/get-started/)

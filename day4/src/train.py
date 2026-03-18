@@ -8,7 +8,7 @@ as a module by the Jupyter notebooks.
 
 Usage (command line):
     # Start MLflow server first (separate terminal):
-    #   mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///mlflow.db
+    #   mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///day4/mlflow.db --default-artifact-root ./day4/mlartifacts
     python day4/src/train.py --experiment-name adult-income-lgbm
 
 Usage (from notebook):
@@ -28,8 +28,9 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
-from sklearn.model_selection import train_test_split
+from sklearn.calibration import calibration_curve
+from sklearn.metrics import accuracy_score, brier_score_loss, f1_score, roc_auc_score
+from sklearn.model_selection import GroupKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 import lightgbm as lgb
@@ -145,7 +146,7 @@ def build_pipeline(
     preprocessor = ColumnTransformer([
         ("num", numeric_transformer, numeric_cols),
         ("cat", categorical_transformer, categorical_cols),
-    ])
+    ]).set_output(transform="pandas")
     clf = lgb.LGBMClassifier(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
@@ -216,8 +217,15 @@ def train_and_log(
             "val_auc": float(roc_auc_score(y_val, val_proba)),
             "val_f1": float(f1_score(y_val, val_pred)),
             "val_accuracy": float(accuracy_score(y_val, val_pred)),
+            "val_brier": float(brier_score_loss(y_val, val_proba)),
         }
         mlflow.log_metrics(metrics)
+
+        # Log feature importances
+        _log_feature_importance(pipe, numeric_cols + categorical_cols)
+
+        # Log calibration data
+        _log_calibration_data(y_val, val_proba)
 
         # Log the serialised model
         mlflow.sklearn.log_model(pipe, artifact_path="model")
@@ -225,13 +233,170 @@ def train_and_log(
         # Optionally register in the Model Registry
         if register_model:
             model_uri = f"runs:/{run_id}/model"
-            mlflow.register_model(model_uri=model_uri, name=model_name)
-            logger.info("Registered model '%s' from run %s", model_name, run_id)
+            mv = mlflow.register_model(model_uri=model_uri, name=model_name)
+            client = mlflow.tracking.MlflowClient()
+            client.set_registered_model_alias(model_name, "champion", mv.version)
+            logger.info(
+                "Registered model '%s' v%s with @champion alias from run %s",
+                model_name, mv.version, run_id,
+            )
 
         logger.info("Run ID: %s", run_id)
         logger.info(
             "val_auc=%.4f  val_f1=%.4f  val_accuracy=%.4f",
             metrics["val_auc"], metrics["val_f1"], metrics["val_accuracy"],
+        )
+
+    return run_id, metrics
+
+
+# ── Artifact helpers ──────────────────────────────────────────────────────────
+
+def _log_feature_importance(pipe: Pipeline, feature_names: list[str]) -> None:
+    """Extract LightGBM feature importances and log as a JSON artifact."""
+    import json, tempfile
+    clf = pipe.named_steps["clf"]
+    preprocessor = pipe.named_steps["preprocessor"]
+    # Get transformed feature names (OHE expands categoricals)
+    try:
+        transformed_names = preprocessor.get_feature_names_out()
+    except Exception:
+        transformed_names = [f"f{i}" for i in range(clf.n_features_)]
+    importances = dict(zip(
+        [str(n) for n in transformed_names],
+        [float(v) for v in clf.feature_importances_],
+    ))
+    # Sort descending
+    importances = dict(sorted(importances.items(), key=lambda x: x[1], reverse=True))
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(importances, f, indent=2)
+        mlflow.log_artifact(f.name, artifact_path="diagnostics")
+
+
+def _log_calibration_data(y_true, y_proba, n_bins: int = 10) -> None:
+    """Compute calibration curve and log as a JSON artifact."""
+    import json, tempfile
+    prob_true, prob_pred = calibration_curve(y_true, y_proba, n_bins=n_bins)
+    cal_data = {
+        "prob_true": [float(v) for v in prob_true],
+        "prob_pred": [float(v) for v in prob_pred],
+        "n_bins": n_bins,
+    }
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(cal_data, f, indent=2)
+        mlflow.log_artifact(f.name, artifact_path="diagnostics")
+
+
+# ── Cross-validated training ─────────────────────────────────────────────────
+
+def train_and_log_cv(
+    params: dict | None = None,
+    n_folds: int = 3,
+    run_name: str = "lgbm-cv-run",
+    experiment_name: str = "adult-income-lgbm",
+    mlflow_uri: str = "http://127.0.0.1:5000",
+    data_path: str | Path = DATA_PATH,
+    register_model: bool = False,
+    model_name: str = MODEL_NAME,
+) -> tuple[str, dict]:
+    """
+    Train with GroupKFold cross-validation and log mean+std metrics to MLflow.
+
+    Uses person_id as the group key to ensure entity-aware splits across folds.
+    After CV, retrains on the full training set and logs the final model.
+
+    Returns
+    -------
+    run_id : str
+        The MLflow run ID.
+    metrics : dict
+        Aggregated metrics {val_auc_mean, val_auc_std, val_f1_mean, val_f1_std, ...}.
+    """
+    if params is None:
+        params = {"n_estimators": 300, "learning_rate": 0.1, "max_depth": 5}
+
+    mlflow.set_tracking_uri(mlflow_uri)
+    mlflow.set_experiment(experiment_name)
+
+    df = load_data(data_path)
+    train_df, val_df, test_df = split_data(df)
+    numeric_cols, categorical_cols = get_feature_columns(train_df)
+    feature_cols = numeric_cols + categorical_cols
+
+    # Use all training data (train + val) for CV
+    train_all = pd.concat([train_df, val_df], ignore_index=True)
+    X_all = train_all[feature_cols]
+    y_all = train_all[TARGET_BIN_COL]
+    groups = train_all["person_id"]
+
+    gkf = GroupKFold(n_splits=n_folds)
+    fold_metrics: dict[str, list[float]] = {
+        "auc": [], "f1": [], "accuracy": [], "brier": [],
+    }
+
+    for fold_idx, (train_idx, val_idx) in enumerate(gkf.split(X_all, y_all, groups)):
+        X_tr, X_vl = X_all.iloc[train_idx], X_all.iloc[val_idx]
+        y_tr, y_vl = y_all.iloc[train_idx], y_all.iloc[val_idx]
+
+        pipe = build_pipeline(numeric_cols, categorical_cols, **params)
+        pipe.fit(X_tr, y_tr)
+
+        vl_proba = pipe.predict_proba(X_vl)[:, 1]
+        vl_pred = pipe.predict(X_vl)
+
+        fold_metrics["auc"].append(float(roc_auc_score(y_vl, vl_proba)))
+        fold_metrics["f1"].append(float(f1_score(y_vl, vl_pred)))
+        fold_metrics["accuracy"].append(float(accuracy_score(y_vl, vl_pred)))
+        fold_metrics["brier"].append(float(brier_score_loss(y_vl, vl_proba)))
+
+        logger.info(
+            "Fold %d/%d: AUC=%.4f  F1=%.4f",
+            fold_idx + 1, n_folds,
+            fold_metrics["auc"][-1], fold_metrics["f1"][-1],
+        )
+
+    # Aggregate
+    metrics = {}
+    for key, values in fold_metrics.items():
+        metrics[f"val_{key}_mean"] = float(np.mean(values))
+        metrics[f"val_{key}_std"] = float(np.std(values))
+
+    with mlflow.start_run(run_name=run_name) as run:
+        run_id = run.info.run_id
+
+        mlflow.log_params(params)
+        mlflow.log_param("seed", SEED)
+        mlflow.log_param("n_folds", n_folds)
+        mlflow.log_param("n_total_train", len(train_all))
+        mlflow.log_param("n_features", len(feature_cols))
+        mlflow.log_metrics(metrics)
+
+        # Retrain on full training set for the final model
+        pipe_final = build_pipeline(numeric_cols, categorical_cols, **params)
+        pipe_final.fit(X_all, y_all)
+
+        _log_feature_importance(pipe_final, feature_cols)
+        _log_calibration_data(
+            y_all,
+            pipe_final.predict_proba(X_all)[:, 1],
+        )
+        mlflow.sklearn.log_model(pipe_final, artifact_path="model")
+
+        if register_model:
+            model_uri = f"runs:/{run_id}/model"
+            mv = mlflow.register_model(model_uri=model_uri, name=model_name)
+            client = mlflow.tracking.MlflowClient()
+            client.set_registered_model_alias(model_name, "champion", mv.version)
+            logger.info(
+                "Registered model '%s' v%s with @champion alias from run %s",
+                model_name, mv.version, run_id,
+            )
+
+        logger.info("Run ID: %s", run_id)
+        logger.info(
+            "CV results — AUC=%.4f±%.4f  F1=%.4f±%.4f",
+            metrics["val_auc_mean"], metrics["val_auc_std"],
+            metrics["val_f1_mean"], metrics["val_f1_std"],
         )
 
     return run_id, metrics

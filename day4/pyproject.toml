@@ -5,7 +5,7 @@ description = "Day 4 — MLOps dependencies"
 requires-python = ">=3.11"
 dependencies = [
     "mlflow>=2.22.0",
-    "nannyml>=0.13.0",
+    "evidently>=0.6.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "pydantic>=2.11.0",
@@ -22,14 +22,6 @@ dependencies = [
 ]
 
 [tool.uv]
-# kaleido 0.2.1.post1 (pulled by nannyml) has no macOS ARM wheel; 0.2.1 does
-override-dependencies = [
-    "kaleido==0.2.1",
-    # nannyml pins lightgbm<4.6 but 4.6+ works fine at runtime
-    # and is needed for scikit-learn>=1.8 compatibility
-    "lightgbm>=4.6.0",
-]
-# Avoid resolving for Python 3.14+ where nannyml/lightgbm constraints conflict
 environments = [
     "python_full_version >= '3.11' and python_full_version < '3.14'",
 ]

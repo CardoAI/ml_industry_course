@@ -103,7 +103,7 @@ make -f day4/Makefile mlflow-server
 
 ```powershell
 cd day4
-uv run mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///mlflow.db
+uv run mlflow server --host 127.0.0.1 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlartifacts
 cd ..
 ```
 
@@ -120,7 +120,7 @@ All `make` targets must be run from the **repo root**.
 | Install deps | `make -f day4/Makefile install` | `cd day4 && uv sync` |
 | Install kernel | `make -f day4/Makefile kernel-install` | `cd day4 && uv run python -m ipykernel install --user --name mlops-industry-course --display-name "MLOps Industry Course"` |
 | Train model | `make -f day4/Makefile train` | `cd day4 && uv run python src/train.py --n-estimators 300 --learning-rate 0.1 --max-depth 5 --mlflow-uri http://127.0.0.1:5000 --experiment-name adult-income-lgbm --run-name makefile-run --data-path ../day1/generated/adult_income_issues.csv --register true --model-name adult-income-classifier` |
-| Run drift check | `make -f day4/Makefile drift-check` | `cd day4 && uv run python src/nannyml_check.py --data-path ../day1/generated/adult_income_issues.csv --model-uri models:/adult-income-classifier/Production --mlflow-uri http://127.0.0.1:5000 --output-dir outputs` |
+| Run drift check | `make -f day4/Makefile drift-check` | `cd day4 && uv run python src/drift_check.py --data-path ../day1/generated/adult_income_issues.csv --model-uri models:/adult-income-classifier@champion --mlflow-uri http://127.0.0.1:5000 --output-dir outputs` |
 | Build Docker image | `make -f day4/Makefile docker-build` | See note below |
 | Run Docker container | `make -f day4/Makefile docker-run` | `docker run --rm -p 8080:8080 adult-income-predictor:latest` |
 | Docker Compose (MLflow + API) | `make -f day4/Makefile docker-compose-up` | `docker compose -f day4/docker-compose.yml up` |
@@ -177,7 +177,6 @@ Interactive API docs: **[http://localhost:8080/docs](http://localhost:8080/docs)
 | Port 8080 already in use | `lsof -ti:8080 \| xargs kill` | `netstat -ano \| findstr :8080` then `taskkill /PID <pid> /F` |
 | `uv: command not found` | Re-run install script and restart shell | Restart PowerShell after install |
 | `make: command not found` | Install via brew: `brew install make` | Use Git Bash, WSL, or raw Python commands (see table above) |
-| NannyML `ImportError` | `cd day4/nannyml-compat && uv sync` | `cd day4\nannyml-compat && uv sync` |
 | `docker: command not found` | Install [Docker Desktop](https://docs.docker.com/get-started/) | Install [Docker Desktop](https://docs.docker.com/get-started/) |
 | Docker build fails: model not found | Ensure MLflow server is running, then `make -f day4/Makefile train` before `docker-build` | Same |
 | MLflow model not in Production stage | `make -f day4/Makefile train` (registers automatically) | Run train step first, then promote via UI if needed |
