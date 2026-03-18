@@ -63,8 +63,10 @@ jobs:
     # Centralised here so the experiment name or model name can be changed
     # in one place.
     env:
-      # file-based MLflow — no server needed on the CI runner
-      MLFLOW_TRACKING_URI: "file://./mlruns"
+      # file-based MLflow — no server needed on the CI runner.
+      # Note: "file:./mlruns" (single slash) = relative path.
+      # "file://./mlruns" would resolve to absolute "/mlruns" and fail with PermissionError.
+      MLFLOW_TRACKING_URI: "file:./mlruns"
       EXPERIMENT_NAME: "ci-adult-income"
       MODEL_NAME: "adult-income-classifier"
       # Drift reports go here; uploaded as an artifact in step 8
