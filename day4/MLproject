@@ -1,0 +1,45 @@
+# ── MLflow Project File ────────────────────────────────────────────────────
+# This file tells MLflow how to run the training pipeline reproducibly.
+#
+# Usage:
+#   mlflow run day4/ -P n_estimators=300 -P learning_rate=0.1
+#
+# MLflow will:
+#   1. Read this file to discover the entry point and parameters
+#   2. Set up the environment (here we use a system env — uv/pip managed)
+#   3. Run the command, injecting parameter values
+#
+# In production you would typically use a conda_env or docker_env instead
+# of system. We use system here because uv already manages our venv.
+# ───────────────────────────────────────────────────────────────────────────
+
+name: adult-income-lgbm
+
+# Use the active Python environment (managed by uv)
+python_env: null
+
+entry_points:
+  main:
+    parameters:
+      n_estimators:   {type: int,    default: 300}
+      learning_rate:  {type: float,  default: 0.1}
+      max_depth:      {type: int,    default: 5}
+      num_leaves:     {type: int,    default: 31}
+      mlflow_uri:     {type: string, default: "http://127.0.0.1:5000"}
+      experiment_name:{type: string, default: "adult-income-lgbm"}
+      run_name:       {type: string, default: "mlflow-project-run"}
+      data_path:      {type: string, default: "day1/generated/adult_income_issues.csv"}
+      register:       {type: string, default: "false"}
+      model_name:     {type: string, default: "adult-income-classifier"}
+    command: >
+      python src/train.py
+        --n-estimators {n_estimators}
+        --learning-rate {learning_rate}
+        --max-depth {max_depth}
+        --num-leaves {num_leaves}
+        --mlflow-uri {mlflow_uri}
+        --experiment-name {experiment_name}
+        --run-name {run_name}
+        --data-path {data_path}
+        --register {register}
+        --model-name {model_name}
