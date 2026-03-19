@@ -1315,7 +1315,6 @@ Every component you built today connects to this diagram. The workshop gives you
 | 3:00–4:30 | Group project time — MLOps integration discussion |
 
 **Before you leave today, your group should have decided:**
-- Which MLflow experiment name you'll use for your project
 - What your reference and analysis sets will be
 - What a drift alert will trigger (retrain? alert? manual review?)
 
