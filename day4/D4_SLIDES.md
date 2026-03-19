@@ -3,7 +3,7 @@ marp: true
 theme: default
 paginate: true
 style: |
-  /* ── Cardo AI corporate template ────────────────────────────────────────── */
+  /* ── Cardo AI Marp template ────────────────────────────────────────── */
   @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&display=swap');
 
   section {
@@ -156,8 +156,7 @@ March 19, 2026
 | *break* | 10:45 | | |
 | **3** | 11:00–11:45 | Data drift + monitoring (Evidently) | `02_drift_monitoring.ipynb` |
 | **4** | 11:45–12:30 | Docker + CI/CD overview | Pre-built walkthrough |
-| | 13:30–15:00 | **Workshop** | Steps 1–3 (+ stretch: CI/CD) |
-| | 15:00–16:30 | **Project work** | Day 5 prep |
+| | 13:30–16:30 | **Workshop** | Steps 1–3 (+ stretch: CI/CD) |
 
 > All code lives in `day4/`. Start from `make -f day4/Makefile help`.
 
@@ -254,8 +253,6 @@ Questions asked:
 
 > "We trained a model" is usually not an acceptable answer in the financial sector, or anywhere else.
 
-**Key regulations:** US Fed SR 11-7 (Supervisory Guidance on Model Risk Management), ECB Guide to Internal Models, EBA GL/2017/16. All require documented model development, validation, and ongoing monitoring. MLflow's run logs and model registry directly address these requirements.
-
 <!-- notes: EBA/ECB guidelines (especially the ECB guide to internal models) explicitly require documentation of model development, validation, and ongoing monitoring. SR 11-7 in the US is the equivalent. This slide connects MLOps to regulatory compliance — a language students going into finance need to speak. -->
 
 ---
@@ -336,15 +333,15 @@ It is not a set of tools. It is a set of *practices* — supported by tools — 
 
 A result is reproducible if, given the same inputs, you always get the same output — on **any machine**, at **any time**.
 
-In ML, that requires five things:
+In ML, that requires (last two items more on the "generalization" spectrum):
 
 | # | Requirement | Common failure mode |
 |---|---|---|
 | 1 | **Fixed random seeds** | `train_test_split` returns different rows each run |
 | 2 | **Pinned dependencies** | Library update silently changes behaviour |
 | 3 | **Environment isolation** | "Works on my machine" |
-| 4 | **Deterministic data splits** | "Same person" in train and test (leakage) |
-| 5 | **Log everything** | Can't reconstruct which features a model used |
+| 4 | **Log everything** | Can't reconstruct which features a model used |
+| 5 | **Deterministic data splits** | "Same person" in train and test (leakage) |
 | 6 | **Cross-validation** | Single-split variance inflates or deflates metrics |
 
 > None of this is glamorous. All of it is load-bearing. But reproducibility is at the heart of the scientific method — it's how we build trust in our findings. In MLOps, it's how we build trust in our models.
@@ -942,7 +939,7 @@ See: [*Gama et al. (2014), "A Survey on Concept Drift Adaptation"*](https://dl.a
 
 **Why it matters for us:** Evidently's univariate drift tests + PSI approach is grounded in this empirical evidence. You're not just using a tool — you're applying peer-reviewed methodology.
 
-> Read after the course. Title is the thesis: production ML should *fail loudly*, not silently.
+> Recommended reading. Title is the thesis: production ML should *fail loudly*, not silently.
 
 ---
 
