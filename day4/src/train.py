@@ -274,8 +274,12 @@ def _log_feature_importance(pipe: Pipeline, feature_names: list[str]) -> None:
 
 
 def _log_calibration_data(y_true, y_proba, n_bins: int = 10) -> None:
-    """Compute calibration curve and log as a JSON artifact."""
+    """Compute calibration curve + KDE and log as JSON + PNG artifacts."""
     import json, tempfile
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     prob_true, prob_pred = calibration_curve(y_true, y_proba, n_bins=n_bins)
     cal_data = {
         "prob_true": [float(v) for v in prob_true],
@@ -285,6 +289,32 @@ def _log_calibration_data(y_true, y_proba, n_bins: int = 10) -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(cal_data, f, indent=2)
         mlflow.log_artifact(f.name, artifact_path="diagnostics")
+
+    # Calibration curve + KDE of predicted probabilities
+    fig, (ax_cal, ax_kde) = plt.subplots(
+        2, 1, figsize=(5, 7), gridspec_kw={"height_ratios": [2, 1]}, sharex=True,
+    )
+    ax_cal.plot(prob_pred, prob_true, marker="o", label="LightGBM")
+    ax_cal.plot([0, 1], [0, 1], "--", color="gray", label="Perfect calibration")
+    ax_cal.set_ylabel("Fraction of positives")
+    ax_cal.set_title("Calibration Curve (Reliability Diagram)")
+    ax_cal.legend()
+    ax_cal.grid(alpha=0.3)
+
+    y_true_arr = np.asarray(y_true)
+    ax_kde.hist(y_proba[y_true_arr == 0], bins=50, density=True, alpha=0.5, label="Negative")
+    ax_kde.hist(y_proba[y_true_arr == 1], bins=50, density=True, alpha=0.5, label="Positive")
+    ax_kde.set_xlabel("Predicted probability")
+    ax_kde.set_ylabel("Density")
+    ax_kde.set_title("Predicted Probability Distribution")
+    ax_kde.legend()
+    ax_kde.grid(alpha=0.3)
+
+    plt.tight_layout()
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        fig.savefig(f.name, dpi=150)
+        mlflow.log_artifact(f.name, artifact_path="diagnostics")
+    plt.close(fig)
 
 
 # ── Cross-validated training ─────────────────────────────────────────────────
