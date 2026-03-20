@@ -5953,9 +5953,9 @@ blockquote {
 <span class="hljs-keyword">RUN</span><span class="language-bash"> apt-get update &amp;&amp; apt-get install -y --no-install-recommends libgomp1 \
     &amp;&amp; <span class="hljs-built_in">rm</span> -rf /var/lib/apt/lists/*   <span class="hljs-comment"># ← LightGBM needs OpenMP</span></span>
 
-<span class="hljs-keyword">RUN</span><span class="language-bash"> pip install --no-cache-dir \
-    mlflow fastapi <span class="hljs-string">&quot;uvicorn[standard]&quot;</span> pydantic \
-    pandas scikit-learn lightgbm      <span class="hljs-comment"># ← runtime deps only (no dev tools)</span></span>
+<span class="hljs-keyword">COPY</span><span class="language-bash"> --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/  <span class="hljs-comment"># ← same tool as local dev</span></span>
+<span class="hljs-keyword">COPY</span><span class="language-bash"> day4/pyproject.toml day4/uv.lock ./                  <span class="hljs-comment"># ← deps layer (cached)</span></span>
+<span class="hljs-keyword">RUN</span><span class="language-bash"> uv <span class="hljs-built_in">sync</span> --frozen --no-dev --no-install-project        <span class="hljs-comment"># ← exact lockfile versions</span></span>
 
 <span class="hljs-keyword">COPY</span><span class="language-bash"> day4/src/predict.py src/predict.py</span>
 <span class="hljs-keyword">COPY</span><span class="language-bash"> day4/src/__init__.py src/__init__.py</span>
@@ -5966,6 +5966,7 @@ blockquote {
 <span class="hljs-keyword">EXPOSE</span> <span class="hljs-number">8080</span>
 <span class="hljs-keyword">CMD</span><span class="language-bash"> [<span class="hljs-string">&quot;uvicorn&quot;</span>, <span class="hljs-string">&quot;src.predict:app&quot;</span>, <span class="hljs-string">&quot;--host&quot;</span>, <span class="hljs-string">&quot;0.0.0.0&quot;</span>, <span class="hljs-string">&quot;--port&quot;</span>, <span class="hljs-string">&quot;8080&quot;</span>]</span>
 </code></pre>
+<p><strong>Why <code>uv sync --frozen</code> instead of <code>pip install</code>?</strong> Same lockfile (<code>uv.lock</code>) pins every transitive dependency to the exact version used in development and CI. No surprise upgrades, no &quot;worked yesterday, broke today.&quot; <code>--no-dev</code> skips notebook/dev tools (evidently, jupyter, matplotlib) — the image stays lean.</p>
 <p><strong>Build flow:</strong> <code>make train</code> logs the model to MLflow → <code>make docker-build</code> extracts the artifact to <code>day4/outputs/model/</code> → Docker <code>COPY</code> bakes it into the image.</p>
 <p><strong>But the image also supports runtime override:</strong> set <code>MODEL_URI</code> and <code>MLFLOW_TRACKING_URI</code> as env vars to pull from MLflow instead — that's what <code>docker-compose.yml</code> does.</p>
 </section>
@@ -7186,7 +7187,6 @@ blockquote {
 </table>
 <p><strong>Before you leave today, your group should have decided:</strong></p>
 <ul>
-<li>Which MLflow experiment name you'll use for your project</li>
 <li>What your reference and analysis sets will be</li>
 <li>What a drift alert will trigger (retrain? alert? manual review?)</li>
 </ul>

@@ -35,17 +35,20 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
-# Install only the Python packages the prediction service needs at runtime.
-# --no-cache-dir avoids storing pip's download cache inside the image.
-# No dev tools (pytest, jupyter, evidently) — keeps the image lean.
-RUN pip install --no-cache-dir \
-    mlflow \
-    fastapi \
-    "uvicorn[standard]" \
-    pydantic \
-    pandas \
-    scikit-learn \
-    lightgbm
+# Install uv — the same package manager used for local dev and CI.
+# Multi-stage COPY pulls the static binary from the official image.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy dependency files FIRST (separate layer = Docker cache hit when only
+# code changes, not deps — saves minutes on repeated builds).
+COPY day4/pyproject.toml day4/uv.lock ./
+
+# Install exact pinned versions from the lockfile.
+#   --frozen       use uv.lock as-is, don't re-resolve (reproducible builds)
+#   --no-dev       skip optional/dev deps (evidently, jupyter, matplotlib)
+#   --no-install-project  don't install our package itself, just its deps
+# This is the Docker equivalent of `make install`, but runtime-only.
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy the FastAPI application code into the image.
 # __init__.py is needed so Python treats src/ as a package.

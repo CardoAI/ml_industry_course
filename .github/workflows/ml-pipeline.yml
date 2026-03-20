@@ -105,9 +105,10 @@ jobs:
 
       # ── 4. INSTALL DEPENDENCIES ──────────────────────────────────────────
       # uv sync reads pyproject.toml + uv.lock and installs exact versions.
+      # --all-extras includes dev dependencies (evidently for drift check).
       # This is the CI equivalent of `make install` from the workshop.
       - name: Install dependencies
-        run: cd day4 && uv sync
+        run: cd day4 && uv sync --all-extras
 
       # ── 5. TRAIN MODEL ──────────────────────────────────────────────────
       # Same train.py you ran locally, but with file-based MLflow.

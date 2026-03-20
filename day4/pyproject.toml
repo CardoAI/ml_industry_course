@@ -4,17 +4,23 @@ version = "0.1.0"
 description = "Day 4 — MLOps dependencies"
 requires-python = ">=3.11"
 dependencies = [
+    # ── Runtime (installed in Docker) ──────────────────────────────────────
     "mlflow>=2.22.0",
-    "evidently>=0.6.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "pydantic>=2.11.0",
-    "httpx>=0.27.0",
     # mlflow requires pandas<3; pin here to make the constraint explicit
     "pandas>=2.2.0,<3",
     "numpy>=1.26.0",
     "scikit-learn>=1.4.0",
     "lightgbm>=4.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # ── Dev / notebook extras (NOT installed in Docker) ────────────────────
+    "evidently>=0.6.0",
+    "httpx>=0.27.0",
     "matplotlib>=3.8.0",
     "seaborn>=0.13.0",
     "ipykernel>=6.0.0",

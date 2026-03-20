@@ -1872,39 +1872,44 @@ name = "ml-industry-course-day4"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "evidently", marker = "python_full_version < '3.14'" },
     { name = "fastapi", marker = "python_full_version < '3.14'" },
-    { name = "httpx", marker = "python_full_version < '3.14'" },
-    { name = "ipykernel", marker = "python_full_version < '3.14'" },
-    { name = "jupyter", marker = "python_full_version < '3.14'" },
     { name = "lightgbm", marker = "python_full_version < '3.14'" },
-    { name = "matplotlib", marker = "python_full_version < '3.14'" },
     { name = "mlflow", marker = "python_full_version < '3.14'" },
     { name = "numpy", marker = "python_full_version < '3.14'" },
     { name = "pandas", marker = "python_full_version < '3.14'" },
     { name = "pydantic", marker = "python_full_version < '3.14'" },
     { name = "scikit-learn", marker = "python_full_version < '3.14'" },
-    { name = "seaborn", marker = "python_full_version < '3.14'" },
     { name = "uvicorn", extra = ["standard"], marker = "python_full_version < '3.14'" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "evidently", marker = "python_full_version < '3.14'" },
+    { name = "httpx", marker = "python_full_version < '3.14'" },
+    { name = "ipykernel", marker = "python_full_version < '3.14'" },
+    { name = "jupyter", marker = "python_full_version < '3.14'" },
+    { name = "matplotlib", marker = "python_full_version < '3.14'" },
+    { name = "seaborn", marker = "python_full_version < '3.14'" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "evidently", specifier = ">=0.6.0" },
+    { name = "evidently", marker = "extra == 'dev'", specifier = ">=0.6.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "ipykernel", specifier = ">=6.0.0" },
-    { name = "jupyter", specifier = ">=1.0.0" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
+    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6.0.0" },
+    { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "lightgbm", specifier = ">=4.6.0" },
-    { name = "matplotlib", specifier = ">=3.8.0" },
+    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "mlflow", specifier = ">=2.22.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.2.0,<3" },
     { name = "pydantic", specifier = ">=2.11.0" },
     { name = "scikit-learn", specifier = ">=1.4.0" },
-    { name = "seaborn", specifier = ">=0.13.0" },
+    { name = "seaborn", marker = "extra == 'dev'", specifier = ">=0.13.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0" },
 ]
+provides-extras = ["dev"]
 
 [[package]]
 name = "mlflow"

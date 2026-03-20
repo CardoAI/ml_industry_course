@@ -284,7 +284,7 @@ The workflow runs on a free `ubuntu-latest` GitHub-hosted runner — no cloud ac
 
 ## Command reference
 
-All `make` targets must be run from the **repo root**.
+All `make` targets must be run from the **repo root**. On windows without `make`, use the equivalent `uv run` commands from the `day4/` directory as shown below. _We still strongly encourage Windows users to use **WSL** or **Git Bash** for a smoother experience with `make`._
 
 | Action | macOS / Linux | Windows (no make) |
 |---|---|---|

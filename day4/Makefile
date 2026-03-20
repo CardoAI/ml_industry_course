@@ -43,8 +43,8 @@ help: ## Show available targets
 	@echo ""
 
 # ── Environment setup ──────────────────────────────────────────────────────────
-install: ## Install Day 4 Python dependencies
-	cd day4 && uv sync
+install: ## Install Day 4 Python dependencies (runtime + dev extras)
+	cd day4 && uv sync --all-extras
 
 kernel-install: ## Register the Jupyter kernel for VS Code / Jupyter
 	$(UV_RUN) python -m ipykernel install --user \

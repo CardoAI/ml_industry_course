@@ -1078,9 +1078,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
     && rm -rf /var/lib/apt/lists/*   # ← LightGBM needs OpenMP
 
-RUN pip install --no-cache-dir \
-    mlflow fastapi "uvicorn[standard]" pydantic \
-    pandas scikit-learn lightgbm      # ← runtime deps only (no dev tools)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/  # ← same tool as local dev
+COPY day4/pyproject.toml day4/uv.lock ./                  # ← deps layer (cached)
+RUN uv sync --frozen --no-dev --no-install-project        # ← exact lockfile versions
 
 COPY day4/src/predict.py src/predict.py
 COPY day4/src/__init__.py src/__init__.py
@@ -1091,6 +1091,8 @@ ENV MODEL_URI="/app/model"           # ← loaded from local path, no server
 EXPOSE 8080
 CMD ["uvicorn", "src.predict:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
+
+**Why `uv sync --frozen` instead of `pip install`?** Same lockfile (`uv.lock`) pins every transitive dependency to the exact version used in development and CI. No surprise upgrades, no "worked yesterday, broke today." `--no-dev` skips notebook/dev tools (evidently, jupyter, matplotlib) — the image stays lean.
 
 **Build flow:** `make train` logs the model to MLflow → `make docker-build` extracts the artifact to `day4/outputs/model/` → Docker `COPY` bakes it into the image.
 
