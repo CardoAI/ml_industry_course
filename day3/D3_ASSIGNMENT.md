@@ -12,6 +12,7 @@
 
 ---
 
+
 ## 1. Scenario
 
 You have just joined the **Structured Credit & Risk Analytics desk** of a mid-sized European bank, *Meridian Capital Partners*. The desk is about to act as **arranger** on a new asset-backed security (ABS) collateralized by a pool of **unsecured personal consumer loans** originated across several regions. Before the deal can be marketed, the desk must deliver an **independent risk view** of the collateral pool to three audiences with very different concerns:
