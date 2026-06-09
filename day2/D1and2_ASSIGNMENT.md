@@ -55,7 +55,7 @@ cleaning step without justification or measurement earns no points.
   - *Entity leakage:* `person_id` repeats across rows. Splits and cross-validation must
     be **entity-aware** (no person in two folds). Use grouped splitting.
   - *Target leakage:* some columns encode the outcome or post-decision information
-    (e.g. `post_adjudication_risk_code`). Identify and handle them — and in Task B6 you
+    (e.g. `post_adjudication_risk_code`). Identify and handle them — and in X1 you
     will **quantify** how badly leaving one in inflates your metrics.
 - **Fit on train, apply to test.** Every transformer (imputer, encoder, scaler, target
   encoder) is *fit on training data only* and *applied* to validation/test. Prefer a
@@ -101,7 +101,7 @@ and ID/process/leakage columns. Aim for breadth and correctness, not prose.
 **A2. Splitting strategy (5 pts).** Define your splits. Respect the dataset's
 `split` column for the final test set; carve a validation scheme out of `train` that is
 **entity-aware** (grouped by `person_id`). State explicitly why a naive row-level random
-split would leak here, and how big the leak is (A-Cross experiment below quantifies it).
+split would leak here, and how big the leak is (X1 quantifies it).
 
 **A3. Encoding (6 pts).** Choose and justify an encoding strategy per categorical
 feature (one-hot, ordinal, frequency, or out-of-fold target encoding). Address
