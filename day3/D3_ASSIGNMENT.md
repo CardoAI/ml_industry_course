@@ -24,7 +24,7 @@ Your head of desk hands you a single CSV — the **loan-level tape** of the pool
 
 > *"Here's the book. I don't care what model you saw in a paper — I care which one this data actually supports. Tell me how correlated these defaults are, what a bad year looks like, and where the pool is dangerously concentrated. And tell me where you might be fooling yourself. We present to the rating agency in two weeks."*
 
-This is **not** a "fit a copula from the textbook" exercise. The tape contains realized `default_date` and `prepayment_date` fields because the originator seasoned the book before securitizing. Your job is to **reverse-engineer the risk**: recover the marginal timing of default and prepayment, recover the **dependence structure** linking obligors, and **project the pool forward** to quantify portfolio loss. You do **not** know which marginal distributions, which copula, or which clustering of obligors generated this data. Discovering and *defending* those choices is where most of the marks live.
+This is **not** a "fit a copula from the textbook" exercise. The tape contains realized `default_date` and `prepayment_date` fields because the originator seasoned the book before securitizing. Your job is to **reverse-engineer the risk**: recover the marginal timing of default, recover the **dependence structure** linking obligors, and **project the pool forward** to quantify portfolio loss. You do **not** know which marginal distributions, which copula, or which clustering of obligors generated this data. Discovering and *defending* those choices is where most of the marks live.
 
 > Keep the three audiences above in mind throughout. Your final report explicitly answers the Model Validation unit and the rating agency: every modeling choice must be one you can defend.
 
@@ -61,7 +61,7 @@ You are given a single file, `loan_tape.csv`, with **one row per loan**. The *in
 
 > **Censoring.** Many loans neither defaulted nor prepaid by `obs_end_date`. These are **right-censored** observations and must be handled as such. Treating censored loans as "non-defaulters" is a modeling error you are expected to avoid and to discuss.
 
-> **Competing risks.** Default and prepayment are **competing terminations**: a loan that prepays can no longer default, and vice versa. Your treatment of the joint timing must respect this.
+> **Competing risks.** Default and prepayment are **competing terminations**: a loan that prepays can no longer default, and vice versa.
 
 The data were generated from a marginal-plus-copula data-generating process, with obligors grouped into latent **clusters**. The clustering scheme, the marginal families, and the copula/latent structure are **hidden from you**. Recovering them — and quantifying your uncertainty about them — is the assignment.
 
@@ -89,7 +89,7 @@ The file you receive is a **raw production tape**, not a curated teaching datase
 ### Part 2 — Marginal estimation (15 pts)
 
 1. **Time scale.** Define your time origin and scale — *calendar time* vs *loan age (months since issue)*. Justify the choice; it propagates everywhere downstream.
-2. **Competing risks.** Treating **default** as the event of interest with **prepayment + administrative end** as competing/censoring, estimate the marginal **time-to-default** distribution; do the symmetric exercise for **time-to-prepayment**. Handle right-censoring explicitly, and decide and justify whether you model default and prepayment as **competing risks** (cause-specific hazards / cumulative incidence) or treat one as **independent censoring** — and state the consequence of getting this wrong.
+2. **Competing risks.** Treating **default** as the event of interest with **prepayment + administrative end** as competing/censoring, estimate the marginal **time-to-default** distribution. Handle right-censoring explicitly, and decide and justify whether you model default and prepayment as **competing risks** (cause-specific hazards / cumulative incidence) or treat one as **independent censoring** — and state the consequence of getting this wrong.
 3. **Family selection.** Fit and compare parametric families per event (e.g., Exponential, Weibull, Log-Normal, Log-Logistic, Gamma, Gompertz) plus a **non-parametric** benchmark (Kaplan–Meier / Aalen–Johansen). Select using information criteria (AIC/BIC) **and** fit diagnostics (QQ vs fitted, cumulative-hazard plots).
 4. **Covariates vs segments.** Decide whether marginals should be **covariate-dependent** (AFT or Cox on `fico`, `region`, `income_bracket`, `interest_rate`) or **segment-specific** (one marginal per cluster). You revisit this in Part 4 — the two choices interact.
 
@@ -100,7 +100,7 @@ The file you receive is a **raw production tape**, not a curated teaching datase
 ### Part 3 — Copula selection & dependence (40 pts) — *the core*
 
 1. **Dependence axis.** State explicitly *what* is being coupled and pick/justify one (or contrast both):
-   - **(i)** within-obligor dependence between time-to-default and time-to-prepayment;
+   - **(i)** within-obligor dependence between time-to-default;
    - **(ii)** **cross-obligor** dependence of default timing driven by a shared/systematic factor — the one that matters for portfolio tail risk.
 
    Your portfolio risk in Parts 5–6 hinges on (ii); keep the modeling choice consistent.
@@ -128,7 +128,7 @@ The file you receive is a **raw production tape**, not a curated teaching datase
 
 You now have fitted marginals, a selected latent structure, a segmentation, and per-loan EAD. Build the simulation engine.
 
-1. **Simulation design.** For a chosen risk horizon $H$ (state it — e.g. 12 / 24 / 36 months): (a) draw correlated uniforms $\mathbf{U}$ from the fitted copula across obligors (respecting segmentation / common factor); (b) map each $u_i$ through the inverse marginal to a simulated time-to-default (and time-to-prepayment under competing risks); (c) determine whether default occurs **before** $H$ **and before** prepayment; (d) compute $\text{Loss}_i = \text{EAD}_i(\tau_i)\times\text{LGD}$ using the **outstanding balance at the simulated default time** (state and justify your LGD — fixed is acceptable if defended, stochastic earns more); (e) aggregate $L=\sum_i \text{Loss}_i$. Repeat for $N$ paths, and **justify $N$** via the Monte Carlo standard error on the tail quantile.
+1. **Simulation design.** For a chosen risk horizon $H$ (state it — e.g. 12 / 24 / 36 months): (a) draw correlated uniforms $\mathbf{U}$ from the fitted copula across obligors (respecting segmentation / common factor); (b) map each $u_i$ through the inverse marginal to a simulated time-to-default; (c) determine whether default occurs **before** $H$; (d) compute $\text{Loss}_i = \text{EAD}_i(\tau_i)\times\text{LGD}$ using the **outstanding balance at the simulated default time** (state and justify your LGD — fixed is acceptable if defended, stochastic earns more); (e) aggregate $L=\sum_i \text{Loss}_i$. Repeat for $N$ paths, and **justify $N$** via the Monte Carlo standard error on the tail quantile.
 2. **Risk measures.** From the simulated loss distribution, at $\alpha \in \{95\%, 99\%, 99.9\%\}$, compute **Expected Loss (EL)**, **VaR$_\alpha$**, **Expected Shortfall ES$_\alpha$** (CVaR), and **Economic Capital** $= \text{VaR}_\alpha - \text{EL}$. Report Monte Carlo confidence intervals, especially on the 99.9% quantile.
 3. **Marginal & Component VaR.** Define and compute **Marginal VaR** ($\partial\text{VaR}/\partial w_i$) and **Component VaR** ($\text{CVaR}_i = w_i\,\partial\text{VaR}/\partial w_i$, verifying $\sum_i \text{CVaR}_i = \text{VaR}$, Euler allocation) per loan/segment. Explain how to estimate these from the *same* simulation (tail-conditional estimators) without re-running, and discuss estimator noise.
 4. **Critical question.** Compare your copula-based VaR to a **naïve independence** benchmark (same marginals, independent obligors). Quantify how much capital independence would *understate* — this number is the economic value of the entire dependence-modeling exercise. Interpret it for the investor audience.
