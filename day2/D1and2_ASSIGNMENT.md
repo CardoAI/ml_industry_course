@@ -8,8 +8,6 @@
 
 **Effort:** ~1 week (budget 15–20 hours)
 
-**Deadline / weight:** [set by instructor]
-
 ---
 
 ## 1. The task
@@ -254,6 +252,3 @@ start there).
   validation, ~1 day final selection + submission, ~1–2 days report. The report written
   in the last hour reads like it.
 
----
-
-*Questions: gennaro.dibrino@cardoai.com*
