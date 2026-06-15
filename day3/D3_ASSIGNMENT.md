@@ -25,7 +25,7 @@ Your head of desk hands you a single CSV — the **loan-level tape** of the pool
 
 > *"Here's the book. I don't care what model you saw in a paper — I care which one this data actually supports. Tell me how correlated these defaults are, what a bad year looks like, and where the pool is dangerously concentrated. And tell me where you might be fooling yourself. We present to the rating agency in two weeks."*
 
-This is **not** a "fit a copula from the textbook" exercise. The tape contains realized `default_date` and `prepayment_date` fields because the originator seasoned the book before securitizing. Your job is to **reverse-engineer the risk**: recover the marginal timing of default, recover the **dependence structure** linking obligors, and **project the pool forward** to quantify portfolio loss. You do **not** know which marginal distributions, which copula, or which clustering of obligors generated this data. Discovering and *defending* those choices is where most of the marks live.
+This is **not** a "fit a copula from the textbook" exercise. The tape contains realized `default_date` and `prepayment_date` fields because the originator seasoned the book before securitizing. Your job is to estimate the marginal timing of default and the **dependence structure** linking obligors, and **project the pool cashflow forward from now**. Discovering and *defending* those choices is where most of the marks live.
 
 > Keep the three audiences above in mind throughout. Your final report explicitly answers the Model Validation unit and the rating agency: every modeling choice must be one you can defend.
 
@@ -33,10 +33,10 @@ This is **not** a "fit a copula from the textbook" exercise. The tape contains r
 
 ## 2. Ground rules
 
-- **Start from a fork** of the course repo. All work lives in your fork, ona branch (e.g. assignment-day3-<yourname>). Do not modify day1/ or day2/.
+- **Start from a fork** of the course repo. All work lives in your fork, on a branch (e.g. assignment-day3-<yourname>). Do not modify day1/ or day2/.
 - **Work inside day3/**. You may add new files under day3/ (e.g. day3/assignment/) and you may edit day3/src/.
 - **Reproducibility is graded**. Fix SEED = 42 everywhere, pin dependencies (the repo already uses uv.lock — do not loosen it), and make every result re-creatable from a command + a git SHA.
-- **Dataset**: day3/generated/loan_tape.csv (raw CSV: yy × yy).
+- **Dataset**: day3/generated/loan_tape.csv (raw CSV: # TODO: insert dimension)
 - **LLM / AI tools:** allowed for code scaffolding and debugging, but every number, plot, and claim in your report must be reproducible from your committed code, and you must be able to defend every design choice. State in your report where you used AI assistance.
 
 ---
@@ -76,8 +76,7 @@ Six parts. Parts 1–6 are all required. Point weights are a guide to effort and
 
 The file you receive is a **raw production tape**, not a curated teaching dataset. It was exported from the originator's loan-management system and concatenated across vintages and regional sub-ledgers. Like any real tape, it is **dirty**: it contains the kinds of defects that arise from manual entry, system migrations, inconsistent regional conventions, and reporting lags. **No modeling result is trustworthy until the tape is cleaned** — a model fitted on uncleaned data produces confident, wrong risk numbers, and Model Validation will catch it.
 
-1. **Clean & validate (do this before anything else).** Profile the raw tape and build a defensible, *documented* cleaning pipeline: detect anomalies, decide a principled treatment for each (correct / impute / flag / drop), and **quantify the impact** of your decisions. At minimum, investigate:
-   For each defect class report **how many records are affected**, your remediation rule, and a **before/after comparison** of the headline statistics (default rate, prepay rate, mean exposure) so the impact is transparent and auditable.
+1. **Clean & validate (do this before anything else).** Profile the raw tape and build a defensible, *documented* cleaning pipeline: detect anomalies, decide a principled treatment for each (correct / impute / flag / drop), and **quantify the impact** of your decisions.
 2. **Descriptive profile** (on the *cleaned* tape): distributions of `issue_amount`, `interest_rate`, `term_months`, `fico`, `region`, `income_bracket`. Report outstanding balance, not just issued amount, as of `obs_end_date` (you will need the schedule from step 4).
 3. **Rates.** Quantify the **censoring rate**, **realized default rate**, and **realized prepayment rate**. Cross-tabulate each against `region`, `fico` bands, and `income_bracket`. Form an early hypothesis about which covariates drive risk.
 4. **Amortization & EAD.** Reconstruct each loan's **amortization schedule** from `amortization_type`, `term_months`, `interest_rate`, `issue_amount` (constant annuity for `french`; equal principal for `linear`; interest-only + balloon for `bullet`). Compute **outstanding principal at any date** — this is the **exposure at default (EAD)** you need later. State assumptions (payment frequency, day-count).
@@ -90,7 +89,7 @@ The file you receive is a **raw production tape**, not a curated teaching datase
 ### Part 2 — Marginal estimation (15 pts)
 
 1. **Time scale.** Define your time origin and scale — *calendar time* vs *loan age (months since issue)*. Justify the choice; it propagates everywhere downstream.
-2. **Competing risks.** Treating **default** as the event of interest with **prepayment + administrative end** as competing/censoring, estimate the marginal **time-to-default** distribution. Handle right-censoring explicitly, and decide and justify whether you model default and prepayment as **competing risks** (cause-specific hazards / cumulative incidence) or treat one as **independent censoring** — and state the consequence of getting this wrong.
+2. **Competing risks.** Treating **default** as the event of interest with **prepayment** as a competing risk and **administrative** as right-censoring, estimate the marginal **time-to-default** distribution. Handle right-censoring explicitly, and decide and justify whether you model default and prepayment as **competing risks** (cause-specific hazards / cumulative incidence) or treat one as **independent censoring** — and state the consequence of getting this wrong.
 3. **Family selection.** Fit and compare parametric families per event (e.g., Exponential, Weibull, Log-Normal, Log-Logistic, Gamma, Gompertz) plus a **non-parametric** benchmark (Kaplan–Meier / Aalen–Johansen). Select using information criteria (AIC/BIC) **and** fit diagnostics (QQ vs fitted, cumulative-hazard plots).
 4. **Covariates vs segments.** Decide whether marginals should be **covariate-dependent** (AFT or Cox on `fico`, `region`, `income_bracket`, `interest_rate`) or **segment-specific** (one marginal per cluster). You revisit this in Part 4 — the two choices interact.
 
@@ -119,7 +118,7 @@ The file you receive is a **raw production tape**, not a curated teaching datase
 
 ### Part 4 — Clustering / segmentation (10 pts)
 
-1**Critical question.** The originator claims the pool is "diversified by region." Using your fitted dependence, evaluate whether regional diversification actually reduces tail risk or whether a shared systematic factor undermines it. Quantify the diversification benefit (or lack thereof).
+1. **Critical question** The originator claims the pool is "diversified by region." Using your fitted dependence, evaluate whether regional diversification actually reduces tail risk or whether a shared systematic factor undermines it. Quantify the diversification benefit (or lack thereof).
 
 **Deliverable:** Diversification analysis.
 
@@ -131,7 +130,7 @@ You now have fitted marginals, a selected latent structure, a segmentation, and 
 
 1. **Simulation design.** For a chosen risk horizon $H$ (state it — e.g. 12 / 24 / 36 months): (a) draw correlated uniforms $\mathbf{U}$ from the fitted copula across obligors (respecting segmentation / common factor); (b) map each $u_i$ through the inverse marginal to a simulated time-to-default; (c) determine whether default occurs **before** $H$; (d) compute $\text{Loss}_i = \text{EAD}_i(\tau_i)\times\text{LGD}$ using the **outstanding balance at the simulated default time** (state and justify your LGD — fixed is acceptable if defended, stochastic earns more); (e) aggregate $L=\sum_i \text{Loss}_i$. Repeat for $N$ paths, and **justify $N$** via the Monte Carlo standard error on the tail quantile.
 2. **Risk measures.** From the simulated loss distribution, at $\alpha \in \{95\%, 99\%, 99.9\%\}$, compute **Expected Loss (EL)**, **VaR$_\alpha$**, **Expected Shortfall ES$_\alpha$** (CVaR), and **Economic Capital** $= \text{VaR}_\alpha - \text{EL}$. Report Monte Carlo confidence intervals, especially on the 99.9% quantile.
-3. **Marginal & Component VaR.** Define and compute **Marginal VaR** ($\partial\text{VaR}/\partial w_i$) and **Component VaR** ($\text{CVaR}_i = w_i\,\partial\text{VaR}/\partial w_i$, verifying $\sum_i \text{CVaR}_i = \text{VaR}$, Euler allocation) per loan/segment. Explain how to estimate these from the *same* simulation (tail-conditional estimators) without re-running, and discuss estimator noise.
+3. **Marginal & Component VaR (CVar).** Define and compute **Marginal VaR** ($\partial\text{VaR}/\partial w_i$) and **Component VaR** ($\text{CVaR}_i = w_i\,\partial\text{VaR}/\partial w_i$, verifying $\sum_i \text{CVaR}_i = \text{VaR}$, Euler allocation) per loan/segment. Explain how to estimate these from the *same* simulation (tail-conditional estimators) without re-running, and discuss estimator noise.
 4. **Critical question.** Compare your copula-based VaR to a **naïve independence** benchmark (same marginals, independent obligors). Quantify how much capital independence would *understate* — this number is the economic value of the entire dependence-modeling exercise. Interpret it for the investor audience.
 
 **Deliverable:** the simulation code (seeded), the loss-distribution plot, the risk-measure table with MC confidence intervals, the MVaR/CVaR attribution, and the independence-benchmark comparison.
