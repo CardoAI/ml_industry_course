@@ -47,15 +47,14 @@ You are given a single file, `loan_tape.csv`, with **one row per loan**. The *in
 
 | Field | Type | Description |
 |---|---|---|
-| `loan_id` | int | Unique obligor/loan identifier |
-| `issue_date` | date | Origination date |
-| `term_months` | int | Contractual maturity in months |
+| `loan_id` | str | Unique obligor/loan identifier |
+| `origination_date` | date | Origination date |
+| `term` | int | Contractual maturity in months |
 | `issue_amount` | float | Original principal (EUR) |
 | `interest_rate` | float | Fixed annual nominal rate |
-| `amortization_type` | str | `french` (constant annuity), `bullet`, or `linear` |
+| `amortization_type` | str | `french` (constant annuity), `bullet`, or `italian` |
 | `region` | str | Origination region (e.g., `North`, `South`, `Center`, `Islands`, `Overseas`) |
-| `fico` | int | Credit score at origination (300–850 scale) |
-| `income_bracket` | str | `low` / `mid` / `high` |
+| `fico_score` | int | Credit score at origination (300–850 scale) |
 | `default_date` | date or NaN | Date of default; `NaN` if never defaulted within observation window |
 | `prepayment_date` | date or NaN | Date of full prepayment; `NaN` if not prepaid |
 | `obs_end_date` | date | End of observation window (right-censoring date) |
@@ -77,9 +76,9 @@ Six parts. Parts 1–6 are all required. Point weights are a guide to effort and
 The file you receive is a **raw production tape**, not a curated teaching dataset. It was exported from the originator's loan-management system and concatenated across vintages and regional sub-ledgers. Like any real tape, it is **dirty**: it contains the kinds of defects that arise from manual entry, system migrations, inconsistent regional conventions, and reporting lags. **No modeling result is trustworthy until the tape is cleaned** — a model fitted on uncleaned data produces confident, wrong risk numbers, and Model Validation will catch it.
 
 1. **Clean & validate (do this before anything else).** Profile the raw tape and build a defensible, *documented* cleaning pipeline: detect anomalies, decide a principled treatment for each (correct / impute / flag / drop), and **quantify the impact** of your decisions.
-2. **Descriptive profile** (on the *cleaned* tape): distributions of `issue_amount`, `interest_rate`, `term_months`, `fico`, `region`, `income_bracket`. Report outstanding balance, not just issued amount, as of `obs_end_date` (you will need the schedule from step 4).
-3. **Rates.** Quantify the **censoring rate**, **realized default rate**, and **realized prepayment rate**. Cross-tabulate each against `region`, `fico` bands, and `income_bracket`. Form an early hypothesis about which covariates drive risk.
-4. **Amortization & EAD.** Reconstruct each loan's **amortization schedule** from `amortization_type`, `term_months`, `interest_rate`, `issue_amount` (constant annuity for `french`; equal principal for `linear`; interest-only + balloon for `bullet`). Compute **outstanding principal at any date** — this is the **exposure at default (EAD)** you need later. State assumptions (payment frequency, day-count).
+2. **Descriptive profile** (on the *cleaned* tape): distributions of `issue_amount`, `interest_rate`, `term`, `fico_score`, `region`. Report outstanding balance, not just issued amount, as of `obs_end_date` (you will need the schedule from step 4).
+3. **Rates.** Quantify the **censoring rate**, **realized default rate**, and **realized prepayment rate**. Cross-tabulate each against `region`, `fico` bands. Form an early hypothesis about which covariates drive risk.
+4. **Amortization & EAD.** Reconstruct each loan's **amortization schedule** from `amortization_type`, `term`, `interest_rate`, `issue_amount` (constant annuity for `french`; equal principal for `linear`; interest-only + balloon for `bullet`). Compute **outstanding principal at any date** — this is the **exposure at default (EAD)** you need later. State assumptions (payment frequency, day-count).
 5. **Critical question.** Beyond the mechanical defects above, what *structural* data-quality and survivorship issues could contaminate inference. List at least three and state the **direction** of each bias.
 
 **Deliverable:** a clean, reproducible dataset; a short **data-quality log** (defect → count → rule → before/after impact); the EAD tables/plots; and the amortization/EAD function.
@@ -91,7 +90,7 @@ The file you receive is a **raw production tape**, not a curated teaching datase
 1. **Time scale.** Define your time origin and scale — *calendar time* vs *loan age (months since issue)*. Justify the choice; it propagates everywhere downstream.
 2. **Competing risks.** Treating **default** as the event of interest with **prepayment** as a competing risk and **administrative** as right-censoring, estimate the marginal **time-to-default** distribution. Handle right-censoring explicitly, and decide and justify whether you model default and prepayment as **competing risks** (cause-specific hazards / cumulative incidence) or treat one as **independent censoring** — and state the consequence of getting this wrong.
 3. **Family selection.** Fit and compare parametric families per event (e.g., Exponential, Weibull, Log-Normal, Log-Logistic, Gamma, Gompertz) plus a **non-parametric** benchmark (Kaplan–Meier / Aalen–Johansen). Select using information criteria (AIC/BIC) **and** fit diagnostics (QQ vs fitted, cumulative-hazard plots).
-4. **Covariates vs segments.** Decide whether marginals should be **covariate-dependent** (AFT or Cox on `fico`, `region`, `income_bracket`, `interest_rate`) or **segment-specific** (one marginal per cluster). You revisit this in Part 4 — the two choices interact.
+4. **Covariates vs segments.** Decide whether marginals should be **covariate-dependent** (AFT or Cox on `fico_score`, `region`, `interest_rate`) or **segment-specific** (one marginal per cluster). You revisit this in Part 4 — the two choices interact.
 
 **Deliverable:** the per-event family comparison (tables + diagnostic plots) and the selected marginals with parameters.
 
